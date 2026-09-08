@@ -50,6 +50,13 @@ jobs:
           python3 -m http.server 8765 --directory fixture >/tmp/draftpane-http.log 2>&1 &
           server=$!
           trap 'kill "$server"' EXIT
+          for _ in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8765/SHA256SUMS >/dev/null; then
+              break
+            fi
+            sleep 0.25
+          done
+          curl --fail --silent http://127.0.0.1:8765/SHA256SUMS >/dev/null
           python3 - <<'PY'
           from pathlib import Path
           path = Path('install.sh')
