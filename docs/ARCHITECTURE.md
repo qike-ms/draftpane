@@ -167,8 +167,10 @@ Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remai
 
 ## Operations and release
 
-- `Cargo.lock` is committed and `--locked` is used in CI/install documentation.
-- Releases should use immutable signed tags, checksums, and build provenance.
+- `Cargo.lock` is committed and `--locked` is used in CI and release builds.
+- Tagged GitHub Actions releases produce four native archives (macOS/Linux × arm64/x86-64) and `SHA256SUMS`; Linux binaries use static musl targets to avoid host glibc-version coupling.
+- A portable `/bin/sh` installer for supported macOS/Linux hosts selects the native archive, verifies its checksum, and atomically installs it to `~/.local/bin`; users do not need Cargo or Rust.
+- Checksums detect corruption and asset mismatches but do not independently authenticate GitHub. Signed artifacts and provenance attestations remain release-hardening work.
 - No service, daemon, configuration, database, telemetry, or secret management is required.
 - Security reports use the private channel in `SECURITY.md`.
 

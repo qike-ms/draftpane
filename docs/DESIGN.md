@@ -1,7 +1,7 @@
 # DraftPane Design
 
 **Status:** Accepted for MVP  
-**Target release:** 0.1.0
+**Target release:** 0.2.0
 
 ## Problem
 
@@ -22,7 +22,7 @@ DraftPane provides the smallest useful editing loop with an explicit terminal-sa
 - Show a live preview beside or below the editor.
 - Preserve terminal integrity for attacker-controlled text.
 - Refuse oversized input and detected conflicting saves.
-- Ship as one Rust binary with a locked, audited dependency graph.
+- Ship as one Rust binary with a locked, audited dependency graph and a Cargo-free end-user installer.
 - Work in Ghostty and other Crossterm-supported terminals.
 
 ## Non-goals for MVP
@@ -83,7 +83,7 @@ At 80 columns or wider, editor and preview each receive half the screen. Narrow 
 2. **No link activation:** links render as label text only. The MVP never dispatches URI handlers.
 3. **Resource bounds:** 1 MiB input cap; no PDF/decompression/plugin inputs; one in-memory document; preview is cached and recomputed only after edits.
 4. **Filesystem integrity:** regular files only; conflict check; same-directory atomic replacement; no shell commands.
-5. **Supply chain:** committed `Cargo.lock`; minimal features; CI formatting/lint/tests/audit; release tags rather than mutable branch install instructions.
+5. **Supply chain:** committed `Cargo.lock`; minimal features; CI formatting/lint/tests/audit; immutable release assets; checksummed Cargo-free installs rather than mutable branch installation.
 6. **Privacy:** no telemetry, network calls, history, or recovery files in MVP.
 
 ## Acceptance criteria
@@ -95,6 +95,7 @@ At 80 columns or wider, editor and preview each receive half the screen. Narrow 
 - A changed-on-disk target is not overwritten.
 - A file over 1 MiB, a symbolic link, and invalid UTF-8 are rejected.
 - `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo audit` pass.
+- Release CI builds and tests macOS/Linux arm64/x86-64 archives, audits dependencies, publishes immutable assets plus `SHA256SUMS`, and the portable `/bin/sh` installer verifies checksums before replacement.
 - A manual Ghostty smoke test can open, edit, preview, save, and visibly neutralize an OSC 52 payload.
 
 ## Success metrics

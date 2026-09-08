@@ -10,19 +10,23 @@ DraftPane keeps the useful editing model of split-pane Markdown tools while trea
 
 This is an independent implementation. It does not copy source from SDF or Ghostty.
 
-## Install from source
+## Install
 
-Requires Rust 1.88 or newer:
-
-```bash
-cargo install --locked --git https://github.com/qike-ms/draftpane --tag v0.1.0
-```
-
-Until `v0.1.0` is published, clone the repository and run:
+Recommended: install a prebuilt, checksummed release binary. Cargo and Rust are not required.
 
 ```bash
-cargo run -- README.md
+curl --proto '=https' --tlsv1.2 -fsSLO https://github.com/qike-ms/draftpane/releases/latest/download/install.sh
+sh install.sh
+rm install.sh
 ```
+
+The installer supports macOS and Linux on arm64 and x86-64, verifies the release archive against `SHA256SUMS`, and installs to `~/.local/bin`. To pin an immutable release:
+
+```bash
+sh install.sh --version v0.2.0
+```
+
+To build or contribute, install Rust 1.88 or newer and use the locked source build documented in [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).
 
 ## Use
 
@@ -49,6 +53,7 @@ The layout is horizontal at 80 columns or wider and stacked in narrower terminal
 - Saves compare the current file with the opened/saved baseline and refuse known conflicts. A concurrent writer can still race the final replacement; keep backups.
 - Atomic replacement preserves existing permission bits and CRLF style, but extended attributes and ownership behavior remain platform-dependent.
 - Cursor movement operates on Unicode scalar values rather than grapheme clusters, so combining characters and multi-code-point emoji may require multiple keypresses.
+- Release checksums detect corrupted or mismatched downloads. GitHub release hosting remains the distribution trust root; signed artifacts and provenance attestations are release-hardening work.
 
 See [DESIGN.md](docs/DESIGN.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), and [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).
 

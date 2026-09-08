@@ -14,4 +14,4 @@ Include the DraftPane commit/version, operating system, terminal and version, mi
 
 DraftPane treats opened documents as untrusted. It neutralizes terminal control characters before rendering and does not open links, invoke shells, load plugins, parse PDFs, access the network, or emit telemetry in the MVP.
 
-Security controls reduce risk but do not make arbitrary files trustworthy. Keep backups and install only immutable tagged releases with a committed lockfile.
+Security controls reduce risk but do not make arbitrary files trustworthy. Keep backups and install only tagged release binaries whose archives pass the published SHA-256 check. Checksums detect corruption or mismatched assets but do not independently authenticate GitHub; signed artifacts and provenance attestations are not available yet.

@@ -1,0 +1,64 @@
+name: install-script
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - .github/workflows/install-script.yml
+  pull_request:
+    paths:
+      - install.sh
+      - .github/workflows/install-script.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Syntax check
+        run: sh -n install.sh
+      - name: ShellCheck
+        if: runner.os == 'Linux'
+        run: shellcheck install.sh
+      - name: Installer smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p fixture/bin
+          printf '#!/bin/sh\necho draftpane-test\n' > fixture/bin/draftpane
+          chmod 0755 fixture/bin/draftpane
+          os=$(uname -s)
+          arch=$(uname -m)
+          case "${os}:${arch}" in
+            Darwin:arm64) platform=Darwin-arm64 ;;
+            Darwin:x86_64) platform=Darwin-x86_64 ;;
+            Linux:x86_64) platform=Linux-x86_64 ;;
+            Linux:aarch64|Linux:arm64) platform=Linux-arm64 ;;
+            *) exit 1 ;;
+          esac
+          asset="draftpane-${platform}.tar.gz"
+          tar -C fixture/bin -czf "fixture/${asset}" draftpane
+          (cd fixture && shasum -a 256 "${asset}" > SHA256SUMS 2>/dev/null) || \
+            (cd fixture && sha256sum "${asset}" > SHA256SUMS)
+          python3 -m http.server 8765 --directory fixture >/tmp/draftpane-http.log 2>&1 &
+          server=$!
+          trap 'kill "$server"' EXIT
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('install.sh')
+          text = path.read_text()
+          text = text.replace('https://github.com/${REPOSITORY}/releases/latest/download', 'http://127.0.0.1:8765')
+          text = text.replace("curl --proto '=https' --tlsv1.2 ", 'curl ')
+          Path('/tmp/install-test.sh').write_text(text)
+          PY
+          sh /tmp/install-test.sh --install-dir "$PWD/installed"
+          test "$("$PWD/installed/draftpane")" = draftpane-test
+          sh /tmp/install-test.sh --install-dir "$PWD/installed" --uninstall
+          test ! -e "$PWD/installed/draftpane"
