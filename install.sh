@@ -128,10 +128,10 @@ ARCHIVE_ENTRIES=$(tar -tzf "${TMP_DIR}/${ASSET}")
     exit 1
 }
 tar -xzf "${TMP_DIR}/${ASSET}" -C "$TMP_DIR"
-[ -f "${TMP_DIR}/draftpane" ] && [ ! -L "${TMP_DIR}/draftpane" ] || {
+if [ ! -f "${TMP_DIR}/draftpane" ] || [ -L "${TMP_DIR}/draftpane" ]; then
     echo "Error: release archive has no regular draftpane binary" >&2
     exit 1
-}
+fi
 mkdir -p -- "$INSTALL_DIR"
 chmod 0755 "${TMP_DIR}/draftpane"
 

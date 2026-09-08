@@ -23,7 +23,7 @@ rm install.sh
 The installer supports macOS and Linux on arm64 and x86-64, verifies the release archive against `SHA256SUMS`, and installs to `~/.local/bin`. To pin an immutable release:
 
 ```bash
-sh install.sh --version v0.2.0
+sh install.sh --version v0.2.1
 ```
 
 To build or contribute, install Rust 1.88 or newer and use the locked source build documented in [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).
