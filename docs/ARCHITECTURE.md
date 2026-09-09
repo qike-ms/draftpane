@@ -54,7 +54,13 @@ It does not render terminal escapes, parse Markdown, or write files.
 - Parses safe Markdown with `pulldown-cmark`.
 - Converts events to Ratatui `Line`/`Span` values.
 - Ignores link destinations and treats HTML as inert text.
-- Uses only semantic style flags such as bold and italic.
+- Applies semantic styles from `theme.rs`; no document content can choose a color or terminal protocol.
+
+### `theme.rs` — terminal theme
+
+- Defines a high-contrast dark documentation palette with Ratatui colors and modifiers.
+- Gives headings, quotes, lists, links, tasks, and code visually distinct styles.
+- Does not attempt font selection: terminal emulators such as Ghostty own the font for terminal cells.
 
 It never invokes a browser, shell, or URI handler.
 
@@ -71,7 +77,9 @@ This is defense in depth: safe input enters the parser, then parser-provided tex
 - Owns `Document` and `Editor` instances.
 - Runs the event/draw loop.
 - Chooses responsive pane layout.
-- Routes save/quit/scroll commands.
+- Routes save/quit/keyboard/mouse-scroll commands.
+- Tracks rendered pane rectangles so mouse-wheel input affects only the editor pane.
+- Derives preview scroll proportionally from editor viewport progress and wrapped preview height.
 - Builds widgets exclusively from sanitized strings and typed styles.
 
 Business rules remain in `Document`, `Editor`, and `safety`, which allows tests without a real terminal.
@@ -82,6 +90,8 @@ Business rules remain in `Document`, `Editor`, and `safety`, which allows tests 
 main ─► app ─► document
           ├──► editor
           ├──► markdown ─► safety
+          │         └────► theme
+          ├──────────────► theme
           └──────────────► safety
 ```
 
@@ -158,7 +168,7 @@ Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remai
 
 ## Testing strategy
 
-- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering.
+- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering/theme, mouse hit-testing, wrapped-height estimation, and synchronized-scroll mapping.
 - Filesystem tests: UTF-8/size checks, atomic save, external conflict.
 - App test: command routing and save integration.
 - CI: formatting, Clippy with warnings denied, locked tests/build, dependency audit.

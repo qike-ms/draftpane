@@ -1,7 +1,7 @@
 # DraftPane Design
 
 **Status:** Accepted for MVP  
-**Target release:** 0.2.1
+**Target release:** 0.3.0
 
 ## Problem
 
@@ -27,7 +27,7 @@ DraftPane provides the smallest useful editing loop with an explicit terminal-sa
 
 ## Non-goals for MVP
 
-- Vim/Emacs compatibility, undo/redo, selections, search, mouse input
+- Vim/Emacs compatibility, undo/redo, selections, search, mouse cursor placement/selection
 - HTML preview, images, PDF, plugins, embedded code execution
 - Syntax highlighting across programming languages
 - Opening links, clipboard protocols, or network access
@@ -42,8 +42,11 @@ At 80 columns or wider, editor and preview each receive half the screen. Narrow 
 
 - `Ctrl+S`: save via same-directory temporary file and rename.
 - `Ctrl+Q`: quit immediately if clean; arm discard if dirty; a second press quits.
-- `Ctrl+D` / `Ctrl+U`: move preview by eight rows.
-- Standard cursor and text-editing keys edit the buffer.
+- Mouse wheel over the editor: move the editor cursor/viewport by three logical rows; preview follows proportionally.
+- `Ctrl+D` / `Ctrl+U`: move the editor cursor/viewport by six logical rows; preview follows proportionally.
+- Standard cursor and text-editing keys edit the buffer; preview scroll follows the editor viewport.
+
+The preview uses a high-contrast dark documentation palette: bright semantic heading colors, muted quote text, yellow list markers, blue links, and a distinct code background. DraftPane cannot change font family inside a terminal application; Ghostty or the user's terminal owns font selection.
 
 ## Functional requirements
 
@@ -61,7 +64,8 @@ At 80 columns or wider, editor and preview each receive half the screen. Narrow 
 
 ### FR3 — Preview
 
-- Render common Markdown structure as styled terminal cells.
+- Render common Markdown structure as prominent, semantically colored terminal cells.
+- Synchronize preview position proportionally to the editor viewport while accounting for wrapped preview rows.
 - Treat inline HTML as text, not executable markup.
 - Ensure every document-derived terminal cell contains only printable text; expose common deceptive Unicode formatting controls visibly.
 
@@ -96,7 +100,8 @@ At 80 columns or wider, editor and preview each receive half the screen. Narrow 
 - A file over 1 MiB, a symbolic link, and invalid UTF-8 are rejected.
 - `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo audit` pass.
 - Release CI builds and tests macOS/Linux arm64/x86-64 archives, audits dependencies, publishes immutable assets plus `SHA256SUMS`, and the portable `/bin/sh` installer verifies checksums before replacement.
-- A manual Ghostty smoke test can open, edit, preview, save, and visibly neutralize an OSC 52 payload.
+- Tests prove mouse-wheel input only scrolls when the pointer is over the editor and that preview scroll follows editor progress.
+- A manual Ghostty smoke test can open, edit, mouse-scroll both panes in sync, preview, save, and visibly neutralize an OSC 52 payload.
 
 ## Success metrics
 
@@ -128,6 +133,7 @@ Rejected because HTML sanitization, local servers, browser invocation, and CSP a
 ## Delivery phases
 
 1. **MVP 0.1:** one file, basic editing, Markdown preview, safe output, conflict-aware atomic save.
-2. **Editing 0.2:** undo/redo, selection, search, grapheme-aware movement, and viewport polish.
-3. **Workflow 0.3:** file watching and explicit reload/merge prompt; safe optional HTTP(S) link confirmation.
-4. **Release hardening:** fuzzing, signed binaries/checksums, provenance attestations, documented compatibility matrix.
+2. **Editing 0.2:** release binaries and installer; early viewport polish.
+3. **Presentation 0.3:** prominent terminal theme, mouse-wheel editor scrolling, and synchronized preview.
+4. **Editing workflow:** undo/redo, selection, search, grapheme-aware movement, file watching, and explicit reload/merge prompt.
+5. **Release hardening:** fuzzing, signed binaries/checksums, provenance attestations, documented compatibility matrix.

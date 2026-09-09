@@ -38,6 +38,11 @@ impl Editor {
         self.revision
     }
 
+    pub fn set_cursor_row(&mut self, row: usize) {
+        self.row = row.min(self.lines.len().saturating_sub(1));
+        self.clamp_column();
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
         let mut changed = false;
         match key.code {
@@ -162,5 +167,13 @@ mod tests {
         assert_eq!(editor.text(), "a\nb");
         editor.handle_key(key(KeyCode::Backspace));
         assert_eq!(editor.text(), "ab");
+    }
+
+    #[test]
+    fn mouse_position_clamps_to_document_and_line() {
+        let mut editor = Editor::from_text("long\nx");
+        editor.handle_key(key(KeyCode::End));
+        editor.set_cursor_row(99);
+        assert_eq!(editor.cursor(), (1, 1));
     }
 }

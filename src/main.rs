@@ -3,11 +3,16 @@ mod document;
 mod editor;
 mod markdown;
 mod safety;
+mod theme;
 
-use std::{env, path::PathBuf, process::ExitCode};
+use std::{env, io::stdout, panic, path::PathBuf, process::ExitCode};
 
 use anyhow::{Context, Result};
 use app::App;
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
+};
 use safety::printable;
 
 fn main() -> ExitCode {
@@ -23,9 +28,19 @@ fn main() -> ExitCode {
 fn run() -> Result<()> {
     let path = parse_path()?;
     let mut terminal = ratatui::init();
+    if let Err(error) = execute!(stdout(), EnableMouseCapture) {
+        ratatui::restore();
+        return Err(error).context("enable mouse capture");
+    }
+    let previous_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        let _ = execute!(stdout(), DisableMouseCapture);
+        previous_hook(info);
+    }));
     let result = App::open(path).and_then(|app| app.run(&mut terminal));
+    let mouse_result = execute!(stdout(), DisableMouseCapture).context("disable mouse capture");
     ratatui::restore();
-    result
+    result.and(mouse_result)
 }
 
 fn parse_path() -> Result<PathBuf> {
