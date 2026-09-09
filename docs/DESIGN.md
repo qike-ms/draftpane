@@ -1,7 +1,7 @@
 # DraftPane Design
 
 **Status:** Accepted for MVP  
-**Target release:** 0.3.0
+**Target release:** 0.3.1
 
 ## Problem
 

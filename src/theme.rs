@@ -37,6 +37,17 @@ pub fn status() -> Style {
     Style::default().fg(MUTED).bg(BG_MUTED)
 }
 
+pub fn shortcut_key() -> Style {
+    Style::default()
+        .fg(CYAN)
+        .bg(BG_MUTED)
+        .add_modifier(Modifier::BOLD)
+}
+
+pub fn shortcut_label() -> Style {
+    Style::default().fg(FG).bg(BG_MUTED)
+}
+
 pub fn body() -> Style {
     preview()
 }

@@ -234,14 +234,30 @@ impl App {
             "✓"
         };
         let path = printable(&self.document.path().display().to_string());
+        let [status_message, status_shortcuts] =
+            Layout::horizontal([Constraint::Min(0), Constraint::Length(26.min(status.width))])
+                .areas(status);
         let status_line = Line::from(vec![
             Span::styled(
                 format!(" {dirty} {path} "),
                 theme::status().add_modifier(Modifier::BOLD),
             ),
-            Span::styled(format!("— {}", printable(&self.message)), theme::status()),
+            Span::styled(format!("— {} ", printable(&self.message)), theme::status()),
         ]);
-        frame.render_widget(Paragraph::new(status_line).style(theme::status()), status);
+        frame.render_widget(
+            Paragraph::new(status_line).style(theme::status()),
+            status_message,
+        );
+        let shortcuts = Line::from(vec![
+            Span::styled(" Ctrl+S ", theme::shortcut_key()),
+            Span::styled("Save ", theme::shortcut_label()),
+            Span::styled(" Ctrl+Q ", theme::shortcut_key()),
+            Span::styled("Quit ", theme::shortcut_label()),
+        ]);
+        frame.render_widget(
+            Paragraph::new(shortcuts).style(theme::status()),
+            status_shortcuts,
+        );
 
         let inner = panes[0].inner(ratatui::layout::Margin::new(1, 1));
         let visible_row = row.saturating_sub(self.editor_scroll);
@@ -285,6 +301,30 @@ mod tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
     use tempfile::tempdir;
+
+    #[test]
+    fn status_line_always_shows_save_and_quit_shortcuts() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "a").unwrap();
+        let mut app = App::open(path).unwrap();
+        app.message = "Saved".into();
+        let backend = TestBackend::new(100, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        let status = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .skip(7 * 100)
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+
+        assert!(status.contains("Ctrl+S Save"));
+        assert!(status.contains("Ctrl+Q Quit"));
+    }
 
     #[test]
     fn saving_updates_file() {
