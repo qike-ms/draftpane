@@ -1,7 +1,7 @@
 # DraftPane Design
 
 **Status:** Accepted for MVP  
-**Target release:** 0.4.0
+**Target release:** 0.5.0
 
 ## Problem
 
@@ -30,13 +30,13 @@ DraftPane provides the smallest useful editing loop with an explicit terminal-sa
 - Vim/Emacs compatibility, undo/redo, selections, search, mouse text selection
 - HTML preview, images, PDF, plugins, embedded code execution
 - Syntax highlighting across programming languages
-- Opening links, clipboard protocols, or network access
+- Opening links, clipboard protocols, or background/implicit network access
 - Multi-file navigation and configuration
 - Full CommonMark visual fidelity
 
 ## Interaction design
 
-Launch with `draftpane <path>`. Existing UTF-8 files are loaded; a missing path starts an empty buffer and is created on save.
+Launch with `draftpane <path>`. Existing UTF-8 files are loaded; a missing path starts an empty buffer and is created on save. Run `draftpane update` outside the editor to explicitly fetch and install the latest verified release.
 
 At 80 columns or wider, editor and preview each receive half the screen. Narrow terminals stack them. A one-line status bar shows path, dirty state, and the last action/error.
 
@@ -90,7 +90,8 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 3. **Resource bounds:** 1 MiB input cap; no PDF/decompression/plugin inputs; one in-memory document; preview is cached and recomputed only after edits.
 4. **Filesystem integrity:** regular files only; conflict check; same-directory atomic replacement; no shell commands.
 5. **Supply chain:** committed `Cargo.lock`; minimal features; CI formatting/lint/tests/audit; immutable release assets; checksummed Cargo-free installs rather than mutable branch installation.
-6. **Privacy:** no telemetry, network calls, history, or recovery files in MVP.
+6. **Privacy:** no telemetry, background network calls, history, or recovery files; only the explicit update command accesses the network.
+7. **Updater integrity:** update logic is embedded in the trusted binary, rebuilds the subprocess environment from a fixed system `PATH` plus required home, temporary-directory, and TLS certificate variables and size/time-bounded HTTPS downloads from fixed GitHub Release URLs, verifies `SHA256SUMS`, validates archive contents, refuses downgrades, and atomically replaces only the running executable path.
 
 ## Acceptance criteria
 
@@ -101,7 +102,8 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 - A changed-on-disk target is not overwritten.
 - A file over 1 MiB, a symbolic link, and invalid UTF-8 are rejected.
 - `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo audit` pass.
-- Release CI builds and tests macOS/Linux arm64/x86-64 archives, audits dependencies, publishes immutable assets plus `SHA256SUMS`, and the portable `/bin/sh` installer verifies checksums before replacement.
+- Release CI builds and tests macOS/Linux arm64/x86-64 archives, audits dependencies, publishes immutable assets plus `SHA256SUMS`, and both the portable `/bin/sh` installer and `draftpane update` verify checksums before replacement.
+- Tests prove the embedded updater passes install paths as arguments without shell interpolation and neutralizes subprocess output controls.
 - Tests prove left-click cursor placement accounts for viewport offsets, wide characters, and sanitization expansion.
 - Tests prove mouse-wheel input only scrolls when the pointer is over the editor and that preview scroll follows editor progress.
 - Tests prove GFM tables render bordered, aligned, padded, terminal-safe cells while retaining inline emphasis.
@@ -140,5 +142,6 @@ Rejected because HTML sanitization, local servers, browser invocation, and CSP a
 2. **Editing 0.2:** release binaries and installer; early viewport polish.
 3. **Presentation 0.3:** prominent terminal theme, mouse-wheel editor scrolling, and synchronized preview.
 4. **Interaction 0.4:** click-to-position cursor and bordered GFM tables.
-5. **Editing workflow:** undo/redo, selection, search, grapheme-aware movement, file watching, and explicit reload/merge prompt.
-6. **Release hardening:** fuzzing, signed binaries/checksums, provenance attestations, documented compatibility matrix.
+5. **Distribution 0.5:** explicit `draftpane update` with embedded, checksummed installer logic.
+6. **Editing workflow:** undo/redo, selection, search, grapheme-aware movement, file watching, and explicit reload/merge prompt.
+7. **Release hardening:** fuzzing, signed binaries/checksums, provenance attestations, documented compatibility matrix.

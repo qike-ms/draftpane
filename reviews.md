@@ -54,3 +54,33 @@ Ship v0.3.0.
 ## Net recommendation
 
 Ship v0.4.0.
+
+---
+
+# Multi-Model Review — v0.5.0
+
+**Final verdicts:** APPROVE×2 / infrastructure failure×1
+
+## Consensus issues resolved
+
+- The updater now starts from a minimal environment with a fixed system `PATH`; the installer independently hardens command lookup and curl configuration.
+- Downloads have explicit size and time limits, checksums are verified, and archives must contain exactly two regular files.
+- Checksummed release metadata prevents downgrades without executing the downloaded binary.
+- Release builds fail when the tag and compiled binary version differ.
+
+## Unique catches resolved
+
+- `draftpane -- update` opens a document whose filename collides with the command name.
+- Non-Unix update attempts return a clear unsupported-platform error.
+- Installer tests cover a poisoned inherited `PATH` and downgrade rejection.
+- Documentation accurately names the limited environment passed to the embedded installer.
+
+## Verification
+
+- Two independent final reviewers returned plain `APPROVE` on the current revision.
+- The third reviewer failed because its read-only execution stream encountered a provider/tool protocol error; its earlier material findings were independently verified and resolved.
+- Local formatting, 45 tests, Clippy with warnings denied, RustSec audit, installer smoke tests, downgrade rejection, shell syntax, and diff checks pass. ShellCheck remains enforced in Linux CI.
+
+## Net recommendation
+
+Ship v0.5.0.

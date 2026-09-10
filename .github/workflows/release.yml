@@ -47,9 +47,16 @@ jobs:
       - name: Package
         shell: bash
         run: |
+          version=${GITHUB_REF_NAME#v}
+          reported=$("target/${{ matrix.target }}/release/draftpane" --version)
+          if [[ "$reported" != "draftpane $version" ]]; then
+            echo "Error: tag $GITHUB_REF_NAME does not match built binary: $reported" >&2
+            exit 1
+          fi
           mkdir package
           cp "target/${{ matrix.target }}/release/draftpane" package/draftpane
-          tar -C package -czf "draftpane-${{ matrix.asset }}.tar.gz" draftpane
+          printf '%s\n' "$version" > package/VERSION
+          tar -C package -czf "draftpane-${{ matrix.asset }}.tar.gz" draftpane VERSION
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: draftpane-${{ matrix.asset }}

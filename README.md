@@ -6,7 +6,7 @@ A small, security-first terminal Markdown editor with a live side-by-side previe
 
 ## Why
 
-DraftPane keeps the useful editing model of split-pane Markdown tools while treating every document as untrusted input. Document control characters are neutralized before rendering, saves detect external conflicts, and the MVP has no network, link-launching, PDF, plugin, or broad syntax-parser surface.
+DraftPane keeps the useful editing model of split-pane Markdown tools while treating every document as untrusted input. Document control characters are neutralized before rendering, saves detect external conflicts, and editing has no network, link-launching, PDF, plugin, or broad syntax-parser surface.
 
 ## Install
 
@@ -21,10 +21,20 @@ That's it—Cargo and Rust are not required. The installer supports macOS and Li
 To install an immutable version:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.4.0/install.sh | sh -s -- --version v0.4.0
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.5.0/install.sh | sh -s -- --version v0.5.0
 ```
 
 To build or contribute, install Rust 1.88 or newer and use the locked source build documented in [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).
+
+### Upgrade
+
+Once installed, update to the latest checksummed release with:
+
+```bash
+draftpane update
+```
+
+The updater uses the verification logic embedded in your installed binary, downloads the matching release archive plus `SHA256SUMS` over HTTPS, verifies the checksum, refuses downgrades, and atomically replaces the running executable. It never downloads and executes a remote script. If DraftPane was installed somewhere requiring elevated write access, reinstall it to a user-writable directory instead of running DraftPane as root.
 
 ## Use
 
@@ -49,12 +59,12 @@ The layout is horizontal at 80 columns or wider and stacked in narrower terminal
 - Opens one regular, non-symlink UTF-8 Markdown file, up to 1 MiB.
 - Renders headings, emphasis, links, lists, block quotes, code, rules, task markers, and GFM tables with aligned Unicode borders and a high-contrast dark palette. The terminal controls the font; DraftPane can select color and text attributes only.
 - Moves the cursor on left click, scrolls the editor with the mouse wheel, and synchronizes preview progress proportionally with editor scrolling/cursor movement.
-- Does not open links or make network requests.
+- Does not open links or make network requests while editing; only the explicit `draftpane update` command accesses GitHub Releases.
 - Does not support mouse text selection, undo, search, clipboard integration, PDF, syntax highlighting, configuration, or automatic file reload yet.
 - Saves compare the current file with the opened/saved baseline and refuse known conflicts. A concurrent writer can still race the final replacement; keep backups.
 - Atomic replacement preserves existing permission bits and CRLF style, but extended attributes and ownership behavior remain platform-dependent.
 - Cursor movement operates on Unicode scalar values rather than grapheme clusters, so combining characters and multi-code-point emoji may require multiple keypresses.
-- Release checksums detect corrupted or mismatched downloads. GitHub release hosting remains the distribution trust root; signed artifacts and provenance attestations are release-hardening work.
+- Install and update checksums detect corrupted or mismatched downloads. GitHub release hosting remains the distribution trust root; signed artifacts and provenance attestations are release-hardening work.
 
 ## License
 

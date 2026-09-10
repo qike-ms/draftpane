@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - install.sh
+      - src/update.rs
       - .github/workflows/install-script.yml
   pull_request:
     paths:
       - install.sh
+      - src/update.rs
       - .github/workflows/install-script.yml
 
 permissions:
@@ -33,6 +35,7 @@ jobs:
           set -euo pipefail
           mkdir -p fixture/bin
           printf '#!/bin/sh\necho draftpane-test\n' > fixture/bin/draftpane
+          printf '99.0.0\n' > fixture/bin/VERSION
           chmod 0755 fixture/bin/draftpane
           os=$(uname -s)
           arch=$(uname -m)
@@ -44,7 +47,7 @@ jobs:
             *) exit 1 ;;
           esac
           asset="draftpane-${platform}.tar.gz"
-          tar -C fixture/bin -czf "fixture/${asset}" draftpane
+          tar -C fixture/bin -czf "fixture/${asset}" draftpane VERSION
           (cd fixture && shasum -a 256 "${asset}" > SHA256SUMS 2>/dev/null) || \
             (cd fixture && sha256sum "${asset}" > SHA256SUMS)
           python3 -m http.server 8765 --directory fixture >/tmp/draftpane-http.log 2>&1 &
@@ -62,10 +65,17 @@ jobs:
           path = Path('install.sh')
           text = path.read_text()
           text = text.replace('https://github.com/${REPOSITORY}/releases/latest/download', 'http://127.0.0.1:8765')
-          text = text.replace("curl --proto '=https' --tlsv1.2 ", 'curl ')
+          text = text.replace("curl --disable --proto '=https' --tlsv1.2 ", 'curl --disable ')
           Path('/tmp/install-test.sh').write_text(text)
           PY
-          sh /tmp/install-test.sh --install-dir "$PWD/installed"
+          PATH="$PWD/poisoned-path:$PATH" sh /tmp/install-test.sh \
+            --install-dir "$PWD/installed" --minimum-version 1.0.0
           test "$("$PWD/installed/draftpane")" = draftpane-test
+          if sh /tmp/install-test.sh --install-dir "$PWD/installed" \
+            --minimum-version 100.0.0 >downgrade.log 2>&1; then
+            echo "Error: installer accepted a downgrade" >&2
+            exit 1
+          fi
+          grep -q "refusing to install an older" downgrade.log
           sh /tmp/install-test.sh --install-dir "$PWD/installed" --uninstall
           test ! -e "$PWD/installed/draftpane"

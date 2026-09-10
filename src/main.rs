@@ -4,8 +4,9 @@ mod editor;
 mod markdown;
 mod safety;
 mod theme;
+mod update;
 
-use std::{env, io::stdout, panic, path::PathBuf, process::ExitCode};
+use std::{env, ffi::OsString, io::stdout, panic, path::PathBuf, process::ExitCode};
 
 use anyhow::{Context, Result};
 use app::App;
@@ -26,7 +27,21 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<()> {
-    let path = parse_path()?;
+    match parse_command(env::args_os().skip(1))? {
+        CliCommand::Edit(path) => run_editor(path),
+        CliCommand::Update => update::run(),
+        CliCommand::Version => {
+            println!("draftpane {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        CliCommand::Help => {
+            print!("{USAGE}");
+            Ok(())
+        }
+    }
+}
+
+fn run_editor(path: PathBuf) -> Result<()> {
     let mut terminal = ratatui::init();
     if let Err(error) = execute!(stdout(), EnableMouseCapture) {
         ratatui::restore();
@@ -43,16 +58,40 @@ fn run() -> Result<()> {
     result.and(mouse_result)
 }
 
-fn parse_path() -> Result<PathBuf> {
-    let mut args = env::args_os().skip(1);
-    let path = args
-        .next()
-        .map(PathBuf::from)
-        .context("usage: draftpane <markdown-file>")?;
-    if args.next().is_some() {
-        anyhow::bail!("usage: draftpane <markdown-file>");
+const USAGE: &str = "DraftPane — secure terminal Markdown editor\n\n\
+Usage:\n  draftpane <markdown-file>\n  draftpane -- <markdown-file>\n  draftpane update\n\n\
+Commands:\n  update       Download, verify, and install the latest release\n\n\
+Options:\n  -h, --help   Show this help\n  -V, --version  Show the installed version\n";
+
+#[derive(Debug, Eq, PartialEq)]
+enum CliCommand {
+    Edit(PathBuf),
+    Update,
+    Version,
+    Help,
+}
+
+fn parse_command(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand> {
+    let mut args = args.into_iter();
+    let first = args.next().context(USAGE)?;
+
+    if first == "--" {
+        let path = args.next().context(USAGE)?;
+        if args.next().is_some() {
+            anyhow::bail!("{USAGE}");
+        }
+        return Ok(CliCommand::Edit(PathBuf::from(path)));
     }
-    Ok(path)
+    if args.next().is_some() {
+        anyhow::bail!("{USAGE}");
+    }
+
+    match first.to_str() {
+        Some("update") => Ok(CliCommand::Update),
+        Some("-V" | "--version") => Ok(CliCommand::Version),
+        Some("-h" | "--help") => Ok(CliCommand::Help),
+        _ => Ok(CliCommand::Edit(PathBuf::from(first))),
+    }
 }
 
 #[cfg(test)]
@@ -64,5 +103,31 @@ mod tests {
         let error = anyhow::anyhow!("bad \x1b]52;c;SGk=\x07 path");
         let rendered = printable(&format!("{error:#}"));
         assert!(!rendered.chars().any(char::is_control));
+    }
+
+    #[test]
+    fn parses_editor_update_and_metadata_commands() {
+        assert_eq!(
+            parse_command([OsString::from("README.md")]).unwrap(),
+            CliCommand::Edit(PathBuf::from("README.md"))
+        );
+        assert_eq!(
+            parse_command([OsString::from("update")]).unwrap(),
+            CliCommand::Update
+        );
+        assert_eq!(
+            parse_command([OsString::from("--version")]).unwrap(),
+            CliCommand::Version
+        );
+        assert_eq!(
+            parse_command([OsString::from("--help")]).unwrap(),
+            CliCommand::Help
+        );
+        assert_eq!(
+            parse_command([OsString::from("--"), OsString::from("update")]).unwrap(),
+            CliCommand::Edit(PathBuf::from("update"))
+        );
+        assert!(parse_command(Vec::<OsString>::new()).is_err());
+        assert!(parse_command([OsString::from("a.md"), OsString::from("b.md")]).is_err());
     }
 }

@@ -26,11 +26,12 @@ untrusted file / keystrokes
 
 ### `main.rs` — process boundary
 
-- Parses the single path argument.
-- Initializes/restores terminal state.
+- Parses editor, update, help, and version commands.
+- Initializes/restores terminal state only for editing.
+- Dispatches explicit updates before entering terminal raw mode.
 - Returns contextual errors to stderr only after terminal restoration.
 
-It owns no editor or rendering logic.
+It owns no editor, rendering, or update transport logic.
 
 ### `document.rs` — filesystem boundary
 
@@ -64,6 +65,15 @@ It does not render terminal escapes, parse Markdown, or write files.
 
 It never invokes a browser, shell, or URI handler.
 
+### `update.rs` — explicit update boundary
+
+- Locates the currently running `draftpane` executable and targets its parent directory.
+- Executes the installer logic embedded in the release binary via `/bin/sh`, with an environment rebuilt from a fixed system `PATH` plus required home, temporary-directory, and TLS certificate variables, and the install directory passed as an argument rather than interpolated into script text.
+- Captures and neutralizes installer output before forwarding it to the terminal.
+- Relies on `install.sh` for size/time-bounded HTTPS downloads, checksum verification, archive validation, downgrade refusal, and atomic replacement.
+
+This module runs only for `draftpane update`; editing remains offline. It never downloads or executes a remote script, but GitHub Releases remains the update trust root.
+
 ### `safety.rs` — mandatory output policy
 
 - Preserves newline/tab only in parser input, then converts every C0/DEL/C1 character to printable Unicode before terminal-cell output.
@@ -88,11 +98,12 @@ Business rules remain in `Document`, `Editor`, and `safety`, which allows tests 
 
 ```text
 main ─► app ─► document
-          ├──► editor
-          ├──► markdown ─► safety
-          │         └────► theme
-          ├──────────────► theme
-          └──────────────► safety
+  │       ├──► editor
+  │       ├──► markdown ─► safety
+  │       │         └────► theme
+  │       ├──────────────► theme
+  │       └──────────────► safety
+  └────► update ─────────► safety
 ```
 
 Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remains at boundaries. There is no plugin interface or speculative abstraction in the MVP.
@@ -155,9 +166,9 @@ Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remai
 | User document | crash/partial save | secure same-directory tempfile, sync, atomic persist, preserve permission bits | ownership/xattrs and power-loss directory durability vary |
 | External editor changes | silent overwrite | byte-for-byte baseline comparison | a change racing after verification can still be overwritten |
 | Availability | oversized/pathological input | bounded single-handle reads; 1 MiB cap; cached preview; no PDF/decompression/plugins | pathological Markdown within limit may still use CPU while editing |
-| Host account | arbitrary link/shell execution | no link launcher, shell, plugin, or subprocess | dependency compromise remains |
-| Privacy | telemetry/history leakage | no network/history/recovery in MVP | OS and terminal may retain normal process/file metadata |
-| Supply chain | malicious/vulnerable crate | lockfile, explicit features, automated advisory audit | registry/account compromise, policy gaps, and unknown vulnerabilities |
+| Host account | arbitrary link/shell execution | no link launcher, plugin, or document-controlled subprocess; updater script is embedded at build time and receives no document input | release-pipeline or dependency compromise remains |
+| Privacy | telemetry/history leakage | no background network/history/recovery; update is explicit | GitHub receives normal request metadata during updates; OS and terminal may retain process/file metadata |
+| Supply chain | malicious/vulnerable crate or update | lockfile, explicit features, automated advisory audit, fixed release URLs, checksummed archives | GitHub/repository compromise, policy gaps, unknown vulnerabilities, and unsigned checksums |
 
 ## Error handling
 
@@ -179,7 +190,8 @@ Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remai
 
 - `Cargo.lock` is committed and `--locked` is used in CI and release builds.
 - Tagged GitHub Actions releases produce four native archives (macOS/Linux × arm64/x86-64) and `SHA256SUMS`; Linux binaries use static musl targets to avoid host glibc-version coupling.
-- A portable `/bin/sh` installer for supported macOS/Linux hosts selects the native archive, verifies its checksum, and atomically installs it to `~/.local/bin`; users do not need Cargo or Rust.
+- A portable `/bin/sh` installer for supported macOS/Linux hosts resets `PATH` to system directories, disables curl user configuration, selects the native archive, uses size/time-bounded HTTPS requests, verifies its checksum, and atomically installs it to `~/.local/bin`; users do not need Cargo or Rust.
+- `draftpane update` passes that same installer logic embedded in the currently running binary to `/bin/sh`, targeting the executable's own directory. It does not download and execute `install.sh` from the network.
 - Checksums detect corruption and asset mismatches but do not independently authenticate GitHub. Signed artifacts and provenance attestations remain release-hardening work.
 - No service, daemon, configuration, database, telemetry, or secret management is required.
 - Security reports use the private channel in `SECURITY.md`.
