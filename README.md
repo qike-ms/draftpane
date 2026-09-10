@@ -18,15 +18,6 @@ curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/relea
 
 That's it—Cargo and Rust are not required. The installer supports macOS and Linux on arm64 and x86-64, verifies the release archive against `SHA256SUMS`, and installs `draftpane` to `~/.local/bin`.
 
-Prefer to inspect the script before running it?
-
-```bash
-curl --proto '=https' --tlsv1.2 -fsSLO https://github.com/qike-ms/draftpane/releases/latest/download/install.sh
-less install.sh
-sh install.sh
-rm install.sh
-```
-
 To install an immutable version:
 
 ```bash
@@ -43,7 +34,7 @@ draftpane README.md
 
 | Key | Action |
 |---|---|
-| `Ctrl+S` | Atomically save |
+| `Ctrl+S` | save |
 | `Ctrl+Q` | Quit; press twice to discard unsaved changes |
 | Left click in editor | Move cursor to the clicked character/line |
 | Mouse wheel over editor | Scroll editor and synchronized preview |
@@ -64,12 +55,6 @@ The layout is horizontal at 80 columns or wider and stacked in narrower terminal
 - Atomic replacement preserves existing permission bits and CRLF style, but extended attributes and ownership behavior remain platform-dependent.
 - Cursor movement operates on Unicode scalar values rather than grapheme clusters, so combining characters and multi-code-point emoji may require multiple keypresses.
 - Release checksums detect corrupted or mismatched downloads. GitHub release hosting remains the distribution trust root; signed artifacts and provenance attestations are release-hardening work.
-
-See [DESIGN.md](docs/DESIGN.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), and [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).
-
-## Security
-
-See [SECURITY.md](SECURITY.md). Please report vulnerabilities privately rather than opening a public issue.
 
 ## License
 
