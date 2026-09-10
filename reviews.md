@@ -84,3 +84,25 @@ Ship v0.4.0.
 ## Net recommendation
 
 Ship v0.5.0.
+
+---
+
+# Focused Review — v0.5.1
+
+**Final verdict:** APPROVE
+
+## Issue resolved
+
+- Fenced code blocks previously sanitized their complete parser event before splitting lines, turning embedded newlines into visible `␊` symbols. Flow diagrams consequently collapsed into one wrapped line and misplaced arrows.
+- Code-block text now splits on parser-preserved newlines first, then sanitizes each line independently. Terminal controls remain neutralized.
+
+## Verification
+
+- The affected B3 flow was rendered from the full source document at the actual preview width: all five down arrows appeared on separate, correctly indented lines, with no visible newline symbols.
+- Added a regression test for line boundaries, arrow placement, and terminal-safe output.
+- Independent review approved the fix.
+- Formatting, 46 tests, and Clippy with warnings denied pass.
+
+## Net recommendation
+
+Ship v0.5.1.

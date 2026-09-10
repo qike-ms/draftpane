@@ -386,16 +386,17 @@ pub fn render_with_width(source: &str, max_width: Option<usize>) -> Vec<Line<'st
             }
             Event::Code(text) => spans.push(Span::styled(printable(&text), theme::inline_code())),
             Event::Text(text) => {
-                let text = printable(&text);
                 if in_code_block {
+                    // Split parser-preserved newlines before `printable`; otherwise
+                    // they become visible ␊ symbols and the whole block wraps as one line.
                     for (index, line) in text.split('\n').enumerate() {
                         if index > 0 {
                             flush(&mut output, &mut spans);
                         }
-                        spans.push(Span::styled(line.to_owned(), theme::code_block()));
+                        spans.push(Span::styled(printable(line), theme::code_block()));
                     }
                 } else {
-                    spans.push(Span::styled(text, inline.current()));
+                    spans.push(Span::styled(printable(&text), inline.current()));
                 }
             }
             Event::SoftBreak | Event::HardBreak if table.is_some() => {
@@ -602,6 +603,26 @@ mod tests {
                 .flat_map(|line| &line.spans)
                 .all(|span| !span.content.chars().any(char::is_control))
         );
+    }
+
+    #[test]
+    fn fenced_flow_diagram_preserves_lines_and_down_arrows() {
+        let source = "```text\nCONNECT\ncloud API · SSH · PXE\n        ↓\nQUALIFY INFRASTRUCTURE\nGPU/CPU/memory · drivers · network fabric · storage · health\n        ↓\nFORM THE KUBERNETES FOUNDATION\n```";
+        let plain = render_with_width(source, Some(78))
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
+        assert!(plain.iter().any(|line| line == "CONNECT"));
+        assert!(plain.iter().any(|line| line == "        ↓"));
+        assert!(plain.iter().any(|line| line == "QUALIFY INFRASTRUCTURE"));
+        assert_eq!(plain.iter().filter(|line| line.contains('↓')).count(), 2);
+        assert!(plain.iter().all(|line| !line.contains('␊')));
     }
 
     #[test]
