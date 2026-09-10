@@ -8,8 +8,6 @@ A small, security-first terminal Markdown editor with a live side-by-side previe
 
 DraftPane keeps the useful editing model of split-pane Markdown tools while treating every document as untrusted input. Document control characters are neutralized before rendering, saves detect external conflicts, and the MVP has no network, link-launching, PDF, plugin, or broad syntax-parser surface.
 
-This is an independent implementation. It does not copy source from SDF or Ghostty.
-
 ## Install
 
 ### One-line install
