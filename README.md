@@ -12,18 +12,27 @@ This is an independent implementation. It does not copy source from SDF or Ghost
 
 ## Install
 
-Recommended: install a prebuilt, checksummed release binary. Cargo and Rust are not required.
+### One-line install
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/latest/download/install.sh | sh
+```
+
+That's it—Cargo and Rust are not required. The installer supports macOS and Linux on arm64 and x86-64, verifies the release archive against `SHA256SUMS`, and installs `draftpane` to `~/.local/bin`.
+
+Prefer to inspect the script before running it?
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSLO https://github.com/qike-ms/draftpane/releases/latest/download/install.sh
+less install.sh
 sh install.sh
 rm install.sh
 ```
 
-The installer supports macOS and Linux on arm64 and x86-64, verifies the release archive against `SHA256SUMS`, and installs to `~/.local/bin`. To pin an immutable release:
+To install an immutable version:
 
 ```bash
-sh install.sh --version v0.4.0
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.4.0/install.sh | sh -s -- --version v0.4.0
 ```
 
 To build or contribute, install Rust 1.88 or newer and use the locked source build documented in [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).
