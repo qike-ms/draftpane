@@ -20,7 +20,7 @@ sh install.sh && rm install.sh
 
 ```bash
 $HOME/.local/bin/draftpane README.md
-# Expect: an editor pane and a high-contrast live preview; mouse-wheel scrolling over the editor moves both panes
+# Expect: an editor pane and a high-contrast live preview; left click moves the cursor, mouse-wheel scrolling moves both panes, and Markdown tables have borders
 ```
 
 4. Uninstall DraftPane.

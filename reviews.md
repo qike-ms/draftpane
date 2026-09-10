@@ -25,3 +25,32 @@
 ## Net recommendation
 
 Ship v0.3.0.
+
+---
+
+# Multi-Model Review — v0.4.0
+
+**Final verdicts:** APPROVE×3
+
+## Consensus issues resolved
+
+- Wide tables originally wrapped borders in narrow panes. Rendering now receives the preview width, fits columns to available terminal cells, truncates content with an ellipsis, and shows a compact fallback when even minimum columns cannot fit.
+- Table base styles originally overrode semantic inline colors. Header/cell backgrounds now retain link and inline-code colors plus text modifiers.
+- Rendered, clicked, and cursor-position horizontal offsets now share the same bounded scroll value.
+
+## Unique catches resolved
+
+- Table truncation now follows Unicode extended grapheme clusters and verifies its final display width.
+- Click mapping now follows extended grapheme clusters, including emoji presentation and skin-tone sequences, while preserving source scalar indices for the editor.
+- In-table line and paragraph breaks no longer emit output outside the table.
+- Preview width changes invalidate the table render cache.
+
+## Verification
+
+- Three independent reviewers approved the final implementation after fixes.
+- Local formatting, 41 tests, Clippy with warnings denied, RustSec audit, and diff checks pass.
+- Coverage includes scrolled click coordinates, wide/sanitized characters, click clamping, empty and aligned table cells, narrow panes, Unicode table truncation, semantic inline styles, and terminal-control neutralization.
+
+## Net recommendation
+
+Ship v0.4.0.

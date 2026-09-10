@@ -1,7 +1,9 @@
 use std::{path::PathBuf, time::Duration};
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Position, Rect},
@@ -9,6 +11,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{document::Document, editor::Editor, markdown, safety::printable, theme};
@@ -24,6 +27,7 @@ pub struct App {
     editor_horizontal_scroll: usize,
     preview: Vec<Line<'static>>,
     preview_revision: u64,
+    rendered_preview_width: u16,
     editor_pane: Rect,
     should_quit: bool,
     quit_armed: bool,
@@ -37,12 +41,13 @@ impl App {
         Ok(Self {
             document,
             editor,
-            message: "Ctrl+S save · Ctrl+Q quit · mouse wheel scrolls editor".into(),
+            message: "Click to move · mouse wheel scrolls · preview follows".into(),
             preview_scroll: 0,
             editor_scroll: 0,
             editor_horizontal_scroll: 0,
             preview,
             preview_revision: 0,
+            rendered_preview_width: 0,
             editor_pane: Rect::default(),
             should_quit: false,
             quit_armed: false,
@@ -106,8 +111,26 @@ impl App {
         match mouse.kind {
             MouseEventKind::ScrollDown => self.scroll_editor(SCROLL_ROWS, true),
             MouseEventKind::ScrollUp => self.scroll_editor(SCROLL_ROWS, false),
+            MouseEventKind::Down(MouseButton::Left) => self.move_cursor_to_click(mouse),
             _ => {}
         }
+    }
+
+    fn move_cursor_to_click(&mut self, mouse: MouseEvent) {
+        let inner = self.editor_pane.inner(ratatui::layout::Margin::new(1, 1));
+        if !contains(inner, mouse.column, mouse.row) {
+            return;
+        }
+        let row = self
+            .editor_scroll
+            .saturating_add(mouse.row.saturating_sub(inner.y) as usize)
+            .min(self.editor.lines().len().saturating_sub(1));
+        let display_column = effective_horizontal_scroll(self.editor_horizontal_scroll)
+            .saturating_add(mouse.column.saturating_sub(inner.x) as usize);
+        let column = character_index_at_display_column(&self.editor.lines()[row], display_column);
+        self.editor.set_cursor(row, column);
+        self.quit_armed = false;
+        self.message = "Cursor moved".into();
     }
 
     fn scroll_editor(&mut self, rows: usize, down: bool) {
@@ -137,10 +160,6 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        if self.preview_revision != self.editor.revision() {
-            self.preview = markdown::render(&self.editor.text());
-            self.preview_revision = self.editor.revision();
-        }
         let vertical = Layout::vertical([Constraint::Min(3), Constraint::Length(1)]);
         let [body, status] = vertical.areas(frame.area());
         let panes = if body.width >= 80 {
@@ -155,6 +174,15 @@ impl App {
                 .split(body)
         };
         self.editor_pane = panes[0];
+        let preview_width = panes[1].width.saturating_sub(2);
+        if self.preview_revision != self.editor.revision()
+            || self.rendered_preview_width != preview_width
+        {
+            self.preview =
+                markdown::render_with_width(&self.editor.text(), Some(preview_width as usize));
+            self.preview_revision = self.editor.revision();
+            self.rendered_preview_width = preview_width;
+        }
 
         let editor_lines = self
             .editor
@@ -177,16 +205,14 @@ impl App {
             .map(|(index, _)| &cursor_prefix[..index])
             .unwrap_or(cursor_prefix);
         let cursor_width = printable(cursor_prefix).width();
-        if cursor_width < self.editor_horizontal_scroll {
+        let effective_scroll = effective_horizontal_scroll(self.editor_horizontal_scroll);
+        if cursor_width < effective_scroll {
             self.editor_horizontal_scroll = cursor_width;
-        } else if cursor_width
-            >= self
-                .editor_horizontal_scroll
-                .saturating_add(editor_width as usize)
-        {
+        } else if cursor_width >= effective_scroll.saturating_add(editor_width as usize) {
             self.editor_horizontal_scroll = cursor_width
                 .saturating_add(1)
-                .saturating_sub(editor_width as usize);
+                .saturating_sub(editor_width as usize)
+                .min(u16::MAX as usize);
         }
         let editor = Paragraph::new(editor_lines)
             .style(theme::editor())
@@ -198,13 +224,12 @@ impl App {
             )
             .scroll((
                 self.editor_scroll.min(u16::MAX as usize) as u16,
-                self.editor_horizontal_scroll.min(u16::MAX as usize) as u16,
+                effective_horizontal_scroll(self.editor_horizontal_scroll) as u16,
             ));
         frame.render_widget(editor, panes[0]);
 
         let editor_height = editor_height as usize;
         let preview_height = panes[1].height.saturating_sub(2) as usize;
-        let preview_width = panes[1].width.saturating_sub(2);
         let preview_line_count = Paragraph::new(self.preview.clone())
             .wrap(Wrap { trim: false })
             .line_count(preview_width)
@@ -264,7 +289,7 @@ impl App {
         if visible_row < inner.height as usize {
             let x = inner.x.saturating_add(
                 cursor_width
-                    .saturating_sub(self.editor_horizontal_scroll)
+                    .saturating_sub(effective_horizontal_scroll(self.editor_horizontal_scroll))
                     .min(inner.width.saturating_sub(1) as usize) as u16,
             );
             let y = inner.y.saturating_add(visible_row as u16);
@@ -278,6 +303,24 @@ fn contains(area: Rect, column: u16, row: u16) -> bool {
         && column < area.x.saturating_add(area.width)
         && row >= area.y
         && row < area.y.saturating_add(area.height)
+}
+
+fn effective_horizontal_scroll(scroll: usize) -> usize {
+    scroll.min(u16::MAX as usize)
+}
+
+fn character_index_at_display_column(line: &str, target: usize) -> usize {
+    let mut width = 0usize;
+    let mut character_index = 0usize;
+    for grapheme in line.graphemes(true) {
+        let next = width.saturating_add(printable(grapheme).width());
+        if target < next {
+            return character_index;
+        }
+        width = next;
+        character_index = character_index.saturating_add(grapheme.chars().count());
+    }
+    character_index
 }
 
 fn synced_preview_scroll(
@@ -336,6 +379,105 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
         app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
         assert_eq!(std::fs::read_to_string(path).unwrap(), "ab");
+    }
+
+    #[test]
+    fn left_click_moves_cursor_with_vertical_and_horizontal_scroll() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "zero\none\nabcdef\nthree").unwrap();
+        let mut app = App::open(path).unwrap();
+        let backend = TestBackend::new(100, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        app.editor_scroll = 1;
+        app.editor_horizontal_scroll = 2;
+
+        app.handle_mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 2,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(app.editor.cursor(), (2, 3));
+        assert_eq!(app.message, "Cursor moved");
+    }
+
+    #[test]
+    fn click_on_editor_border_does_not_move_cursor() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "zero\none").unwrap();
+        let mut app = App::open(path).unwrap();
+        let backend = TestBackend::new(100, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+
+        app.handle_mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 2,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(app.editor.cursor(), (0, 0));
+    }
+
+    #[test]
+    fn click_maps_wide_and_sanitized_characters_to_source_columns() {
+        assert_eq!(character_index_at_display_column("a界b", 0), 0);
+        assert_eq!(character_index_at_display_column("a界b", 1), 1);
+        assert_eq!(character_index_at_display_column("a界b", 2), 1);
+        assert_eq!(character_index_at_display_column("a界b", 3), 2);
+        assert_eq!(character_index_at_display_column("a\u{202e}b", 4), 1);
+        assert_eq!(character_index_at_display_column("a\u{202e}b", 6), 2);
+        assert_eq!(character_index_at_display_column("❤️x", 0), 0);
+        assert_eq!(character_index_at_display_column("❤️x", 1), 0);
+        assert_eq!(character_index_at_display_column("❤️x", 2), 2);
+        assert_eq!(character_index_at_display_column("👍🏽x", 1), 0);
+        assert_eq!(character_index_at_display_column("👍🏽x", 2), 2);
+        assert_eq!(effective_horizontal_scroll(usize::MAX), u16::MAX as usize);
+    }
+
+    #[test]
+    fn click_on_wide_character_uses_the_rendered_cell_position() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "a界b").unwrap();
+        let mut app = App::open(path).unwrap();
+        let backend = TestBackend::new(100, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+
+        app.handle_mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 3,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(app.editor.cursor(), (0, 1));
+    }
+
+    #[test]
+    fn click_past_line_and_document_end_clamps_safely() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "a\nb").unwrap();
+        let mut app = App::open(path).unwrap();
+        let backend = TestBackend::new(100, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+
+        app.handle_mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 20,
+            row: 6,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(app.editor.cursor(), (1, 1));
     }
 
     #[test]

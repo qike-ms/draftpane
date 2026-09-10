@@ -116,6 +116,21 @@ pub fn rule() -> Style {
     Style::default().fg(BORDER).bg(BG)
 }
 
+pub fn table_border() -> Style {
+    Style::default().fg(BLUE).bg(BG)
+}
+
+pub fn table_header() -> Style {
+    Style::default()
+        .fg(CYAN)
+        .bg(BG_MUTED)
+        .add_modifier(Modifier::BOLD)
+}
+
+pub fn table_cell() -> Style {
+    Style::default().fg(FG).bg(BG)
+}
+
 pub fn task(checked: bool) -> Style {
     Style::default()
         .fg(if checked { GREEN } else { MUTED })

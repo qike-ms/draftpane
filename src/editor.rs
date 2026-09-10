@@ -39,8 +39,12 @@ impl Editor {
     }
 
     pub fn set_cursor_row(&mut self, row: usize) {
+        self.set_cursor(row, self.column);
+    }
+
+    pub fn set_cursor(&mut self, row: usize, column: usize) {
         self.row = row.min(self.lines.len().saturating_sub(1));
-        self.clamp_column();
+        self.column = column.min(self.lines[self.row].chars().count());
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
@@ -172,8 +176,7 @@ mod tests {
     #[test]
     fn mouse_position_clamps_to_document_and_line() {
         let mut editor = Editor::from_text("long\nx");
-        editor.handle_key(key(KeyCode::End));
-        editor.set_cursor_row(99);
+        editor.set_cursor(99, 99);
         assert_eq!(editor.cursor(), (1, 1));
     }
 }

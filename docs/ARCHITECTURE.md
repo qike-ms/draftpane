@@ -51,8 +51,8 @@ It does not render terminal escapes, parse Markdown, or write files.
 
 ### `markdown.rs` — semantic preview
 
-- Parses safe Markdown with `pulldown-cmark`.
-- Converts events to Ratatui `Line`/`Span` values.
+- Parses safe Markdown with `pulldown-cmark`, including its GFM table extension.
+- Converts events to Ratatui `Line`/`Span` values and buffers each table long enough to compute display-cell column widths.
 - Ignores link destinations and treats HTML as inert text.
 - Applies semantic styles from `theme.rs`; no document content can choose a color or terminal protocol.
 
@@ -77,8 +77,8 @@ This is defense in depth: safe input enters the parser, then parser-provided tex
 - Owns `Document` and `Editor` instances.
 - Runs the event/draw loop.
 - Chooses responsive pane layout.
-- Routes save/quit/keyboard/mouse-scroll commands.
-- Tracks rendered pane rectangles so mouse-wheel input affects only the editor pane.
+- Routes save/quit/keyboard/mouse-scroll/click commands.
+- Tracks rendered pane rectangles so mouse input affects only the editor content area; click coordinates map through vertical/horizontal scroll offsets and terminal display widths.
 - Derives preview scroll proportionally from editor viewport progress and wrapped preview height.
 - Builds widgets exclusively from sanitized strings and typed styles.
 
@@ -168,7 +168,7 @@ Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remai
 
 ## Testing strategy
 
-- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering/theme, mouse hit-testing, wrapped-height estimation, and synchronized-scroll mapping.
+- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering/theme and GFM table layout, mouse hit-testing/click coordinate mapping, wrapped-height estimation, and synchronized-scroll mapping.
 - Filesystem tests: UTF-8/size checks, atomic save, external conflict.
 - App test: command routing and save integration.
 - CI: formatting, Clippy with warnings denied, locked tests/build, dependency audit.
