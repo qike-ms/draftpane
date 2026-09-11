@@ -1,7 +1,7 @@
 # DraftPane Design
 
 **Status:** Accepted for MVP  
-**Target release:** 0.5.0
+**Target release:** 0.6.0
 
 ## Problem
 
@@ -29,6 +29,7 @@ DraftPane provides the smallest useful editing loop with an explicit terminal-sa
 
 - Vim/Emacs compatibility, undo/redo, selections, search, mouse text selection
 - HTML preview, images, PDF, plugins, embedded code execution
+- Full Mermaid compatibility or arbitrary graph layout
 - Syntax highlighting across programming languages
 - Opening links, clipboard protocols, or background/implicit network access
 - Multi-file navigation and configuration
@@ -67,6 +68,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 
 - Render common Markdown structure as prominent, semantically colored terminal cells.
 - Render GFM tables with Unicode borders, content-derived column widths, header emphasis, and source alignment markers.
+- Recognize fenced `mermaid` blocks and render a deliberately bounded subset—top-down linear flows, rectangular nodes, and `-->` edges—as terminal-native boxes and arrows. Unsupported syntax falls back to visible source code.
 - Synchronize preview position proportionally to the editor viewport while accounting for wrapped preview rows.
 - Treat inline HTML as text, not executable markup.
 - Ensure every document-derived terminal cell contains only printable text; expose common deceptive Unicode formatting controls visibly.
@@ -87,7 +89,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 
 1. **Terminal injection:** parser input crosses `safety::parser_input`, which preserves newline/tab only for logical layout; every string reaching a terminal cell crosses `safety::printable`, where all C0 controls become Unicode control pictures, DEL becomes `␡`, and C1 controls become `�`.
 2. **No link activation:** links render as label text only. The MVP never dispatches URI handlers.
-3. **Resource bounds:** 1 MiB input cap; no PDF/decompression/plugin inputs; one in-memory document; preview is cached and recomputed only after edits.
+3. **Resource bounds:** 1 MiB input cap; Mermaid blocks are capped at 64 KiB, 64 nodes, 64-byte identifiers, 512-character labels, and 4,096 output lines; no PDF/decompression/plugin inputs; one in-memory document; preview is cached and recomputed only after edits.
 4. **Filesystem integrity:** regular files only; conflict check; same-directory atomic replacement; no shell commands.
 5. **Supply chain:** committed `Cargo.lock`; minimal features; CI formatting/lint/tests/audit; immutable release assets; checksummed Cargo-free installs rather than mutable branch installation.
 6. **Privacy:** no telemetry, background network calls, history, or recovery files; only the explicit update command accesses the network.
@@ -107,6 +109,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 - Tests prove left-click cursor placement accounts for viewport offsets, wide characters, and sanitization expansion.
 - Tests prove mouse-wheel input only scrolls when the pointer is over the editor and that preview scroll follows editor progress.
 - Tests prove GFM tables render bordered, aligned, padded, terminal-safe cells while retaining inline emphasis.
+- Tests prove supported Mermaid flows render as bounded, terminal-safe boxes and arrows, and unsupported Mermaid falls back to source without semantic guessing.
 - A manual Ghostty smoke test can open, edit, mouse-scroll both panes in sync, preview, save, and visibly neutralize an OSC 52 payload.
 
 ## Success metrics
@@ -117,6 +120,30 @@ For the MVP, success is quality-gated rather than growth-gated:
 - Zero raw control bytes from document input in rendered spans under tests/fuzz corpus.
 - No data loss in tested normal-save, detected-conflict, and new-target-conflict paths; injected persist-failure testing remains release work.
 - Editing remains usable across documents longer and wider than the visible pane.
+
+## Rendering compatibility research
+
+DraftPane follows explicit Markdown extensions rather than inferring semantics from ordinary text:
+
+| Convention | Established behavior | DraftPane behavior |
+|---|---|---|
+| CommonMark fenced code | Preserve literal code; arrows such as `↓` have no diagram semantics | Styled, line-preserving code block |
+| GFM tables, task lists, and strikethrough | Parse opt-in GFM extensions | Semantic terminal rendering; link destinations remain inert |
+| Fenced ```` ```mermaid ```` | MarkEdit recognizes the `mermaid` info string and delegates preview to Mermaid; Mermaid defines flowchart nodes and edges | Parse a safe linear subset locally into boxes/arrows; show source for unsupported syntax |
+| Mermaid rectangle node | `id["label"]` is a process/rectangle node | Unicode bordered box |
+| Mermaid top-down edge | `flowchart TD`/`TB` plus `a --> b` means a directed top-down connection | Centered `↓` between boxes |
+
+A standalone `↓` is therefore rendered as a glyph by Chrome-adjacent web renderers, CommonMark renderers such as Glamour/Glow, and MarkEdit's normal Markdown path. It becomes part of a diagram only inside an explicit diagram convention such as Mermaid. DraftPane does not reinterpret ordinary prose or `text` fences heuristically.
+
+Primary implementation references, reviewed at pinned revisions:
+
+- [Mermaid flowchart syntax](https://github.com/mermaid-js/mermaid/blob/94ea01f/docs/syntax/flowchart.md)
+- [MarkEdit Mermaid preview detection](https://github.com/MarkEdit-app/MarkEdit/blob/45247e0/CoreEditor/src/styling/nodes/code.ts)
+- [MarkEdit GFM table preview](https://github.com/MarkEdit-app/MarkEdit/blob/45247e0/CoreEditor/src/styling/nodes/table.ts)
+- [Glow's Glamour rendering boundary](https://github.com/charmbracelet/glow/blob/7b2431d/ui/pager.go)
+- [Glamour's AST element mapping](https://github.com/charmbracelet/glamour/blob/49df656/ansi/elements.go)
+
+The implementation is independent Rust code using existing DraftPane parser events and Ratatui cells; no source from those projects is copied or linked into the binary.
 
 ## Alternatives considered
 
@@ -143,5 +170,6 @@ Rejected because HTML sanitization, local servers, browser invocation, and CSP a
 3. **Presentation 0.3:** prominent terminal theme, mouse-wheel editor scrolling, and synchronized preview.
 4. **Interaction 0.4:** click-to-position cursor and bordered GFM tables.
 5. **Distribution 0.5:** explicit `draftpane update` with embedded, checksummed installer logic.
-6. **Editing workflow:** undo/redo, selection, search, grapheme-aware movement, file watching, and explicit reload/merge prompt.
-7. **Release hardening:** fuzzing, signed binaries/checksums, provenance attestations, documented compatibility matrix.
+6. **Diagrams 0.6:** safe, bounded terminal rendering for linear top-down Mermaid flowcharts.
+7. **Editing workflow:** undo/redo, selection, search, grapheme-aware movement, file watching, and explicit reload/merge prompt.
+8. **Release hardening:** fuzzing, signed binaries/checksums, provenance attestations, documented compatibility matrix.

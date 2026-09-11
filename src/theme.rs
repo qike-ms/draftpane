@@ -105,6 +105,28 @@ pub fn code_label() -> Style {
         .add_modifier(Modifier::DIM)
 }
 
+pub fn diagram_border() -> Style {
+    Style::default().fg(BLUE).bg(BG)
+}
+
+pub fn diagram_title() -> Style {
+    Style::default()
+        .fg(CYAN)
+        .bg(BG)
+        .add_modifier(Modifier::BOLD)
+}
+
+pub fn diagram_body() -> Style {
+    Style::default().fg(FG).bg(BG)
+}
+
+pub fn diagram_arrow() -> Style {
+    Style::default()
+        .fg(YELLOW)
+        .bg(BG)
+        .add_modifier(Modifier::BOLD)
+}
+
 pub fn link() -> Style {
     Style::default()
         .fg(BLUE)

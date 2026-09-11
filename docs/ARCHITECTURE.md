@@ -11,9 +11,9 @@ DraftPane is a local terminal application. Its trust boundary is unusual: the te
 untrusted file / keystrokes
           │
           ▼
-  Document + Editor ──► Markdown events
-          │                   │
-          └────► safety::printable ◄────┘
+  Document + Editor ──► Markdown events ──► bounded diagram parser
+          │                   │                       │
+          └──────────► safety::printable ◄────────────┘
                               │
                               ▼
                       Ratatui cells/styles
@@ -57,6 +57,14 @@ It does not render terminal escapes, parse Markdown, or write files.
 - Ignores link destinations and treats HTML as inert text.
 - Applies semantic styles from `theme.rs`; no document content can choose a color or terminal protocol.
 
+### `diagram.rs` — bounded diagram renderer
+
+- Recognizes only fenced Mermaid `flowchart TD`/`TB` and `graph TD`/`TB` content.
+- Accepts one linear `-->` chain over declared rectangular nodes; labels may use `<br>` line breaks.
+- Renders nodes and arrows directly as Ratatui `Line`/`Span` values within the preview width.
+- Rejects branching, cycles, undeclared nodes, directives, styling, links, callbacks, subgraphs, and other diagram kinds. Rejection is non-destructive: `markdown.rs` renders the original fenced source.
+- Applies the normal printable-text boundary and hard limits: 64 KiB source, 64 nodes, 64-byte identifiers, 512-character labels, and 4,096 rendered lines. It never executes Mermaid JavaScript, creates SVG/HTML, or invokes an external process.
+
 ### `theme.rs` — terminal theme
 
 - Defines a high-contrast dark documentation palette with Ratatui colors and modifiers.
@@ -99,7 +107,8 @@ Business rules remain in `Document`, `Editor`, and `safety`, which allows tests 
 ```text
 main ─► app ─► document
   │       ├──► editor
-  │       ├──► markdown ─► safety
+  │       ├──► markdown ─► diagram ─► safety
+  │       │         ├────► safety
   │       │         └────► theme
   │       ├──────────────► theme
   │       └──────────────► safety
@@ -179,7 +188,7 @@ Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remai
 
 ## Testing strategy
 
-- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering/theme and GFM table layout, mouse hit-testing/click coordinate mapping, wrapped-height estimation, and synchronized-scroll mapping.
+- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering/theme, GFM table layout, bounded Mermaid parsing/rendering/fallback, mouse hit-testing/click coordinate mapping, wrapped-height estimation, and synchronized-scroll mapping.
 - Filesystem tests: UTF-8/size checks, atomic save, external conflict.
 - App test: command routing and save integration.
 - CI: formatting, Clippy with warnings denied, locked tests/build, dependency audit.
@@ -203,5 +212,5 @@ New features must preserve these invariants:
 1. Untrusted strings cannot bypass `safety::printable` before reaching terminal cells.
 2. Document content cannot select styles containing raw terminal protocols.
 3. External processes, URLs, plugins, and parsers require explicit threat-model updates.
-4. Resource-consuming formats require enforceable size/time/depth bounds.
+4. Resource-consuming formats require enforceable size/time/depth bounds; diagram syntax must fail closed to visible source when unsupported or ambiguous.
 5. Filesystem changes remain conflict-aware and use atomic replacement; race and metadata limitations stay documented.

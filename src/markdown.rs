@@ -7,6 +7,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
+    diagram,
     safety::{parser_input, printable},
     theme,
 };
@@ -281,6 +282,9 @@ pub fn render_with_width(source: &str, max_width: Option<usize>) -> Vec<Line<'st
     let mut inline = InlineStyle::default();
     let mut list_depth = 0usize;
     let mut in_code_block = false;
+    let mut code_block_language: Option<String> = None;
+    let mut code_block_is_mermaid = false;
+    let mut code_block_source = String::new();
     let mut table: Option<TableState> = None;
 
     for event in parser {
@@ -370,31 +374,44 @@ pub fn render_with_width(source: &str, max_width: Option<usize>) -> Vec<Line<'st
             Event::Start(Tag::CodeBlock(kind)) => {
                 flush(&mut output, &mut spans);
                 in_code_block = true;
-                if let CodeBlockKind::Fenced(language) = kind
-                    && !language.is_empty()
-                {
-                    output.push(Line::styled(
-                        format!("── {} ──", printable(&language)),
-                        theme::code_label(),
-                    ));
-                }
+                code_block_source.clear();
+                code_block_language = match kind {
+                    CodeBlockKind::Fenced(language) if !language.is_empty() => {
+                        let language = printable(&language);
+                        code_block_is_mermaid = language
+                            .split_whitespace()
+                            .next()
+                            .is_some_and(|name| name.eq_ignore_ascii_case("mermaid"));
+                        Some(language)
+                    }
+                    _ => {
+                        code_block_is_mermaid = false;
+                        None
+                    }
+                };
             }
             Event::End(TagEnd::CodeBlock) => {
-                flush(&mut output, &mut spans);
+                if code_block_is_mermaid
+                    && let Some(lines) = diagram::render_mermaid(&code_block_source, max_width)
+                {
+                    output.extend(lines);
+                } else {
+                    render_code_block(
+                        &mut output,
+                        code_block_language.as_deref(),
+                        &code_block_source,
+                    );
+                }
                 in_code_block = false;
+                code_block_language = None;
+                code_block_is_mermaid = false;
+                code_block_source.clear();
                 output.push(Line::styled("", theme::body()));
             }
             Event::Code(text) => spans.push(Span::styled(printable(&text), theme::inline_code())),
             Event::Text(text) => {
                 if in_code_block {
-                    // Split parser-preserved newlines before `printable`; otherwise
-                    // they become visible ␊ symbols and the whole block wraps as one line.
-                    for (index, line) in text.split('\n').enumerate() {
-                        if index > 0 {
-                            flush(&mut output, &mut spans);
-                        }
-                        spans.push(Span::styled(printable(line), theme::code_block()));
-                    }
+                    code_block_source.push_str(&text);
                 } else {
                     spans.push(Span::styled(printable(&text), inline.current()));
                 }
@@ -434,6 +451,20 @@ pub fn render_with_width(source: &str, max_width: Option<usize>) -> Vec<Line<'st
         output.push(Line::styled("", theme::body()));
     }
     output
+}
+
+fn render_code_block(output: &mut Vec<Line<'static>>, language: Option<&str>, source: &str) {
+    if let Some(language) = language {
+        output.push(Line::styled(
+            format!("── {} ──", printable(language)),
+            theme::code_label(),
+        ));
+    }
+    // Split parser-preserved newlines before `printable`; otherwise they
+    // become visible ␊ symbols and the whole block wraps as one line.
+    for line in source.trim_end_matches('\n').split('\n') {
+        output.push(Line::styled(printable(line), theme::code_block()));
+    }
 }
 
 fn flush(output: &mut Vec<Line<'static>>, spans: &mut Vec<Span<'static>>) {
@@ -623,6 +654,64 @@ mod tests {
         assert!(plain.iter().any(|line| line == "QUALIFY INFRASTRUCTURE"));
         assert_eq!(plain.iter().filter(|line| line.contains('↓')).count(), 2);
         assert!(plain.iter().all(|line| !line.contains('␊')));
+    }
+
+    #[test]
+    fn renders_supported_mermaid_as_a_box_and_arrow_diagram() {
+        let source = "```mermaid\nflowchart TD\na[\"CONNECT<br/>cloud API · SSH · PXE\"]\nb[\"QUALIFY<br/>GPU · drivers · health\"]\na --> b\n```";
+        let plain = render_with_width(source, Some(60))
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
+        assert!(plain.iter().any(|line| line.contains("│ CONNECT")));
+        assert!(
+            plain
+                .iter()
+                .any(|line| line.contains("cloud API · SSH · PXE"))
+        );
+        assert!(plain.iter().any(|line| line.contains('↓')));
+        assert!(plain.iter().all(|line| !line.contains("flowchart TD")));
+    }
+
+    #[test]
+    fn unsupported_mermaid_falls_back_to_source_code() {
+        let rendered = render("```mermaid\nsequenceDiagram\nA->>B: hi\n```");
+        let plain = rendered
+            .iter()
+            .flat_map(|line| &line.spans)
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert!(plain.contains("── mermaid ──"));
+        assert!(plain.contains("sequenceDiagram"));
+    }
+
+    #[test]
+    fn preserves_the_full_fenced_code_info_string() {
+        let rendered = render("```Rust title=Demo\nfn main() {}\n```");
+        let plain = rendered
+            .iter()
+            .flat_map(|line| &line.spans)
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert!(plain.contains("── Rust title=Demo ──"));
+    }
+
+    #[test]
+    fn preserves_gfm_alert_marker_as_visible_text() {
+        let rendered = render("> [!NOTE]\n> Keep this warning");
+        let plain = rendered
+            .iter()
+            .flat_map(|line| &line.spans)
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+        assert!(plain.contains("[!NOTE]"));
+        assert!(plain.contains("Keep this warning"));
     }
 
     #[test]

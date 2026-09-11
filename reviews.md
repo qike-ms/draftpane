@@ -106,3 +106,32 @@ Ship v0.5.0.
 ## Net recommendation
 
 Ship v0.5.1.
+
+---
+
+# Multi-Model Review — v0.6.0
+
+**Final verdicts:** APPROVE×2 / reviewer infrastructure failure×1
+
+## Consensus issues resolved
+
+- Mermaid parsing now fails closed for directives, malformed labels, unsupported shapes, multiple edge statements, missing chains, undeclared nodes, branching, and cycles.
+- Parsing and rendering enforce source, identifier, label, node-count, and output-line bounds.
+- Ordinary fenced code preserves its complete info string, while unsupported Mermaid remains visible as source.
+- GFM alert markers remain visible after enabling the complete GFM parser option set.
+
+## Unique catches resolved
+
+- Added direct regression coverage for the six-node production-shaped flow, five arrows, terminal width, cycle rejection, hostile controls, and oversized input.
+- Rejected non-rectangular Mermaid node syntax rather than rendering it deceptively as a rectangle.
+- Mermaid directives reject instead of being silently discarded.
+
+## Verification
+
+- Two independent model families returned plain `APPROVE` on the final revision; a third reviewer could not start because its configured model was unavailable.
+- Formatting, 55 tests, Clippy with warnings denied, RustSec audit, and diff checks pass.
+- A 160×60 terminal capture of the complete six-node sample showed six centered boxes and five down arrows within the preview pane.
+
+## Net recommendation
+
+Ship v0.6.0.

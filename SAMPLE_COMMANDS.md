@@ -20,7 +20,7 @@ sh install.sh && rm install.sh
 
 ```bash
 $HOME/.local/bin/draftpane README.md
-# Expect: an editor pane and a high-contrast live preview; left click moves the cursor, mouse-wheel scrolling moves both panes, and Markdown tables have borders
+# Expect: an editor pane and a high-contrast live preview; left click moves the cursor, mouse-wheel scrolling moves both panes, Markdown tables have borders, and supported Mermaid flows render as boxes/arrows
 ```
 
 4. Update an installed copy to the latest checksummed release.
@@ -76,7 +76,22 @@ cargo build --locked --release
 # Expect: `target/release/draftpane` exists
 ```
 
-11. Audit locked dependencies after installing `cargo-audit` once.
+11. Preview a terminal-native Mermaid flow.
+
+````bash
+cat > /tmp/draftpane-flow.md <<'EOF'
+```mermaid
+flowchart TD
+    connect["CONNECT<br/>cloud API · SSH · PXE"]
+    qualify["QUALIFY<br/>GPU · drivers · health"]
+    connect --> qualify
+```
+EOF
+draftpane /tmp/draftpane-flow.md
+# Expect: two bordered boxes connected by a down arrow
+````
+
+12. Audit locked dependencies after installing `cargo-audit` once.
 
 ```bash
 cargo audit
