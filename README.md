@@ -21,7 +21,7 @@ That's it—Cargo and Rust are not required. The installer supports macOS and Li
 To install an immutable version:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.6.0/install.sh | sh -s -- --version v0.6.0
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.6.1/install.sh | sh -s -- --version v0.6.1
 ```
 
 To build or contribute, install Rust 1.88 or newer and use the locked source build documented in [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).

@@ -109,7 +109,7 @@ impl TableState {
         push_table_rule(output, &widths, '┌', '┬', '┐');
         for (index, row) in self.rows.iter().enumerate() {
             output.push(render_table_row(row, &widths, &self.alignments));
-            if row.header && index + 1 < self.rows.len() {
+            if index + 1 < self.rows.len() {
                 push_table_rule(output, &widths, '├', '┼', '┤');
             }
         }
@@ -506,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_gfm_table_with_borders_padding_and_alignment() {
+    fn renders_gfm_table_with_borders_padding_alignment_and_row_dividers() {
         let rendered = render("| Name | Count |\n| :--- | ---: |\n| 界 | 7 |\n| longer | 42 |");
         let plain = rendered
             .iter()
@@ -522,9 +522,31 @@ mod tests {
         assert_eq!(plain[1], "│ Name   │ Count │");
         assert_eq!(plain[2], "├────────┼───────┤");
         assert_eq!(plain[3], "│ 界     │     7 │");
-        assert_eq!(plain[4], "│ longer │    42 │");
-        assert_eq!(plain[5], "└────────┴───────┘");
-        assert_eq!(plain.len(), 6);
+        assert_eq!(plain[4], "├────────┼───────┤");
+        assert_eq!(plain[5], "│ longer │    42 │");
+        assert_eq!(plain[6], "└────────┴───────┘");
+        assert_eq!(plain.len(), 7);
+    }
+
+    #[test]
+    fn renders_dividers_between_rows_with_empty_cells() {
+        let rendered = render(
+            "| Control loop | Target owner | Implementation |\n|---|---|---|\n| Row1 | | |\n| Row2 | | |",
+        );
+        let plain = rendered
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(plain.len(), 7);
+        assert_eq!(plain.iter().filter(|line| line.starts_with('├')).count(), 2);
+        assert!(plain[3].contains("Row1"));
+        assert!(plain[5].contains("Row2"));
     }
 
     #[test]
