@@ -53,7 +53,7 @@ It does not render terminal escapes, parse Markdown, or write files.
 ### `markdown.rs` — semantic preview
 
 - Parses safe Markdown with `pulldown-cmark`, including its GFM table extension.
-- Converts events to Ratatui `Line`/`Span` values and buffers each table long enough to compute display-cell column widths.
+- Converts events to Ratatui `Line`/`Span` values and buffers each table long enough to compute display-cell column widths; long cells wrap with preserved styles under explicit output-line and rendered-cell limits.
 - Ignores link destinations and treats HTML as inert text.
 - Applies semantic styles from `theme.rs`; no document content can choose a color or terminal protocol.
 
@@ -96,8 +96,8 @@ This is defense in depth: safe input enters the parser, then parser-provided tex
 - Runs the event/draw loop.
 - Chooses responsive pane layout.
 - Routes save/quit/keyboard/mouse-scroll/click commands.
-- Tracks rendered pane rectangles so mouse input affects only the editor content area; click coordinates map through vertical/horizontal scroll offsets and terminal display widths.
-- Derives preview scroll proportionally from editor viewport progress and wrapped preview height.
+- Tracks rendered pane rectangles so mouse input targets the correct pane; editor clicks map through vertical/horizontal scroll offsets and terminal display widths.
+- Derives preview scroll proportionally from editor viewport progress and wrapped preview height, while supporting independent wheel and boundary-key scrolling for expanded preview content.
 - Builds widgets exclusively from sanitized strings and typed styles.
 
 Business rules remain in `Document`, `Editor`, and `safety`, which allows tests without a real terminal.
@@ -188,7 +188,7 @@ Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remai
 
 ## Testing strategy
 
-- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering/theme, GFM table layout, bounded Mermaid parsing/rendering/fallback, mouse hit-testing/click coordinate mapping, wrapped-height estimation, and synchronized-scroll mapping.
+- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering/theme, bounded and style-preserving GFM table wrapping, bounded Mermaid parsing/rendering/fallback, mouse hit-testing/click coordinate mapping, wrapped-height estimation, and synchronized/independent preview scrolling.
 - Filesystem tests: UTF-8/size checks, atomic save, external conflict.
 - App test: command routing and save integration.
 - CI: formatting, Clippy with warnings denied, locked tests/build, dependency audit.

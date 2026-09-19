@@ -23,12 +23,15 @@ pub struct App {
     editor: Editor,
     message: String,
     preview_scroll: u16,
+    preview_scroll_manual: bool,
+    preview_max_scroll: u16,
     editor_scroll: usize,
     editor_horizontal_scroll: usize,
     preview: Vec<Line<'static>>,
     preview_revision: u64,
     rendered_preview_width: u16,
     editor_pane: Rect,
+    preview_pane: Rect,
     should_quit: bool,
     quit_armed: bool,
 }
@@ -43,12 +46,15 @@ impl App {
             editor,
             message: "Click to move · mouse wheel scrolls · preview follows".into(),
             preview_scroll: 0,
+            preview_scroll_manual: false,
+            preview_max_scroll: 0,
             editor_scroll: 0,
             editor_horizontal_scroll: 0,
             preview,
             preview_revision: 0,
             rendered_preview_width: 0,
             editor_pane: Rect::default(),
+            preview_pane: Rect::default(),
             should_quit: false,
             quit_armed: false,
         })
@@ -95,24 +101,36 @@ impl App {
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 self.scroll_editor(SCROLL_ROWS * 2, false);
             }
-            _ if self.editor.handle_key(key) => {
-                self.document.replace_text(self.editor.text());
-                self.quit_armed = false;
-                self.message = "Modified".into();
+            _ => {
+                let previous_cursor = self.editor.cursor();
+                if self.editor.handle_key(key) {
+                    self.document.replace_text(self.editor.text());
+                    self.preview_scroll_manual = false;
+                    self.quit_armed = false;
+                    self.message = "Modified".into();
+                } else if self.editor.cursor() != previous_cursor {
+                    self.preview_scroll_manual = false;
+                    self.quit_armed = false;
+                    self.message = "Cursor moved".into();
+                }
             }
-            _ => {}
         }
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) {
-        if !contains(self.editor_pane, mouse.column, mouse.row) {
-            return;
-        }
-        match mouse.kind {
-            MouseEventKind::ScrollDown => self.scroll_editor(SCROLL_ROWS, true),
-            MouseEventKind::ScrollUp => self.scroll_editor(SCROLL_ROWS, false),
-            MouseEventKind::Down(MouseButton::Left) => self.move_cursor_to_click(mouse),
-            _ => {}
+        if contains(self.editor_pane, mouse.column, mouse.row) {
+            match mouse.kind {
+                MouseEventKind::ScrollDown => self.scroll_editor(SCROLL_ROWS, true),
+                MouseEventKind::ScrollUp => self.scroll_editor(SCROLL_ROWS, false),
+                MouseEventKind::Down(MouseButton::Left) => self.move_cursor_to_click(mouse),
+                _ => {}
+            }
+        } else if contains(self.preview_pane, mouse.column, mouse.row) {
+            match mouse.kind {
+                MouseEventKind::ScrollDown => self.scroll_preview(SCROLL_ROWS, true),
+                MouseEventKind::ScrollUp => self.scroll_preview(SCROLL_ROWS, false),
+                _ => {}
+            }
         }
     }
 
@@ -129,6 +147,7 @@ impl App {
             .saturating_add(mouse.column.saturating_sub(inner.x) as usize);
         let column = character_index_at_display_column(&self.editor.lines()[row], display_column);
         self.editor.set_cursor(row, column);
+        self.preview_scroll_manual = false;
         self.quit_armed = false;
         self.message = "Cursor moved".into();
     }
@@ -143,9 +162,11 @@ impl App {
             self.editor_scroll.saturating_sub(rows)
         };
         if self.editor_scroll == previous_scroll {
+            self.scroll_preview(rows, down);
             return;
         }
 
+        self.preview_scroll_manual = false;
         let (row, _) = self.editor.cursor();
         let visible_last = self
             .editor_scroll
@@ -157,6 +178,24 @@ impl App {
         }
         self.quit_armed = false;
         self.message = "Editor and preview scrolled".into();
+    }
+
+    fn scroll_preview(&mut self, rows: usize, down: bool) {
+        let previous_scroll = self.preview_scroll;
+        self.preview_scroll = if down {
+            self.preview_scroll
+                .saturating_add(rows.min(u16::MAX as usize) as u16)
+                .min(self.preview_max_scroll)
+        } else {
+            self.preview_scroll
+                .saturating_sub(rows.min(u16::MAX as usize) as u16)
+        };
+        if self.preview_scroll == previous_scroll {
+            return;
+        }
+        self.preview_scroll_manual = true;
+        self.quit_armed = false;
+        self.message = "Preview scrolled".into();
     }
 
     fn draw(&mut self, frame: &mut Frame) {
@@ -174,6 +213,7 @@ impl App {
                 .split(body)
         };
         self.editor_pane = panes[0];
+        self.preview_pane = panes[1];
         let preview_width = panes[1].width.saturating_sub(2);
         if self.preview_revision != self.editor.revision()
             || self.rendered_preview_width != preview_width
@@ -182,6 +222,7 @@ impl App {
                 markdown::render_with_width(&self.editor.text(), Some(preview_width as usize));
             self.preview_revision = self.editor.revision();
             self.rendered_preview_width = preview_width;
+            self.preview_scroll_manual = false;
         }
 
         let editor_lines = self
@@ -230,26 +271,31 @@ impl App {
 
         let editor_height = editor_height as usize;
         let preview_height = panes[1].height.saturating_sub(2) as usize;
-        let preview_line_count = Paragraph::new(self.preview.clone())
-            .wrap(Wrap { trim: false })
-            .line_count(preview_width)
-            .max(1);
-        self.preview_scroll = synced_preview_scroll(
-            self.editor_scroll,
-            self.editor.lines().len(),
-            editor_height,
-            preview_line_count,
-            preview_height,
-        );
         let preview = Paragraph::new(self.preview.clone())
             .style(theme::preview())
+            .wrap(Wrap { trim: false });
+        let preview_line_count = preview.line_count(preview_width).max(1);
+        self.preview_max_scroll = preview_line_count
+            .saturating_sub(preview_height)
+            .min(u16::MAX as usize) as u16;
+        self.preview_scroll = if self.preview_scroll_manual {
+            self.preview_scroll.min(self.preview_max_scroll)
+        } else {
+            synced_preview_scroll(
+                self.editor_scroll,
+                self.editor.lines().len(),
+                editor_height,
+                preview_line_count,
+                preview_height,
+            )
+        };
+        let preview = preview
             .block(
                 Block::default()
                     .title(Span::styled(" Preview ", theme::pane_title()))
                     .borders(Borders::ALL)
                     .border_style(theme::pane_border()),
             )
-            .wrap(Wrap { trim: false })
             .scroll((self.preview_scroll, 0));
         frame.render_widget(preview, panes[1]);
 
@@ -513,7 +559,69 @@ mod tests {
     }
 
     #[test]
-    fn mouse_wheel_outside_editor_does_not_move_cursor() {
+    fn mouse_wheel_over_wrapped_preview_scrolls_without_moving_editor() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(
+            &path,
+            format!(
+                "| A | B |\n| - | - |\n| {} | value |",
+                "long text ".repeat(40)
+            ),
+        )
+        .unwrap();
+        let mut app = App::open(path).unwrap();
+        let backend = TestBackend::new(100, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+
+        app.handle_mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 75,
+            row: 3,
+            modifiers: KeyModifiers::NONE,
+        });
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+
+        assert_eq!(app.editor.cursor().0, 0);
+        assert_eq!(app.editor_scroll, 0);
+        assert_eq!(app.preview_scroll, SCROLL_ROWS as u16);
+        assert!(app.preview_scroll_manual);
+        assert_eq!(app.message, "Preview scrolled");
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        assert!(!app.preview_scroll_manual);
+        assert_eq!(app.preview_scroll, 0);
+    }
+
+    #[test]
+    fn ctrl_d_scrolls_wrapped_preview_when_editor_cannot_scroll() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(
+            &path,
+            format!(
+                "| A | B |\n| - | - |\n| {} | value |",
+                "long text ".repeat(40)
+            ),
+        )
+        .unwrap();
+        let mut app = App::open(path).unwrap();
+        let backend = TestBackend::new(100, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL));
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+
+        assert_eq!(app.editor_scroll, 0);
+        assert_eq!(app.preview_scroll, (SCROLL_ROWS * 2) as u16);
+        assert!(app.preview_scroll_manual);
+    }
+
+    #[test]
+    fn mouse_wheel_over_static_preview_does_not_move_cursor() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.md");
         std::fs::write(&path, "a\nb\nc\nd").unwrap();

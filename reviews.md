@@ -135,3 +135,25 @@ Ship v0.5.1.
 ## Net recommendation
 
 Ship v0.6.0.
+
+---
+
+# Release Review — v0.6.2
+
+## Issues resolved
+
+- Replaced table-cell ellipsis truncation with width-aware, style-preserving wrapping.
+- Preserved repeated ASCII spaces, non-breaking spaces, long words, and wide graphemes across visual lines.
+- Added independent preview scrolling so expanded table content remains reachable even when the source editor cannot scroll.
+- Bounded expansion to 4,096 table output lines and 65,536 rendered cell slots, with a visible fallback when a table exceeds either limit.
+- Kept narrow ASCII tables renderable by deriving minimum column widths from actual grapheme widths.
+- Restored synchronized preview behavior after keyboard cursor navigation.
+
+## Verification
+
+- Formatting, 63 tests, Clippy with warnings denied, RustSec audit, release build, and terminal visual inspection pass.
+- Final independent review found no remaining material issues.
+
+## Net recommendation
+
+Ship v0.6.2.

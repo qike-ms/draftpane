@@ -12,6 +12,9 @@ use crate::{
     theme,
 };
 
+const MAX_TABLE_OUTPUT_LINES: usize = 4_096;
+const MAX_TABLE_RENDERED_CELLS: usize = 65_536;
+
 #[derive(Default)]
 struct InlineStyle {
     heading: Option<HeadingLevel>,
@@ -93,27 +96,49 @@ impl TableState {
             return;
         }
         let mut widths = vec![0usize; columns];
+        let mut minimums = vec![1usize; columns];
         for row in &self.rows {
             for (column, cell) in row.cells.iter().enumerate() {
                 widths[column] = widths[column].max(cell_width(cell));
+                minimums[column] = minimums[column].max(max_grapheme_width(cell));
             }
         }
         widths.iter_mut().for_each(|width| *width = (*width).max(1));
         if let Some(max_width) = max_width {
-            let Some(fitted) = fit_table_widths(&widths, max_width) else {
+            let Some(fitted) = fit_table_widths(&widths, &minimums, max_width) else {
                 output.push(table_too_wide_line(columns, max_width));
                 return;
             };
             widths = fitted;
         }
-        push_table_rule(output, &widths, '┌', '┬', '┐');
+
+        let mut rendered = Vec::new();
+        let mut rendered_cells = 0usize;
+        push_table_rule(&mut rendered, &widths, '┌', '┬', '┐');
         for (index, row) in self.rows.iter().enumerate() {
-            output.push(render_table_row(row, &widths, &self.alignments));
+            let reserved_rules = usize::from(index + 1 < self.rows.len()) + 1;
+            let remaining = MAX_TABLE_OUTPUT_LINES
+                .saturating_sub(rendered.len())
+                .saturating_sub(reserved_rules);
+            let remaining_cells = MAX_TABLE_RENDERED_CELLS.saturating_sub(rendered_cells);
+            let Some((lines, cell_slots)) =
+                render_table_row(row, &widths, &self.alignments, remaining, remaining_cells)
+            else {
+                output.push(table_too_tall_line(max_width));
+                return;
+            };
+            rendered.extend(lines);
+            rendered_cells = rendered_cells.saturating_add(cell_slots);
             if index + 1 < self.rows.len() {
-                push_table_rule(output, &widths, '├', '┼', '┤');
+                push_table_rule(&mut rendered, &widths, '├', '┼', '┤');
             }
         }
-        push_table_rule(output, &widths, '└', '┴', '┘');
+        push_table_rule(&mut rendered, &widths, '└', '┴', '┘');
+        if rendered.len() > MAX_TABLE_OUTPUT_LINES {
+            output.push(table_too_tall_line(max_width));
+        } else {
+            output.extend(rendered);
+        }
     }
 }
 
@@ -121,83 +146,164 @@ fn cell_width(cell: &[Span<'static>]) -> usize {
     cell.iter().map(|span| span.content.width()).sum()
 }
 
-fn fit_table_widths(natural: &[usize], max_width: usize) -> Option<Vec<usize>> {
+fn max_grapheme_width(cell: &[Span<'static>]) -> usize {
+    cell.iter()
+        .flat_map(|span| span.content.graphemes(true))
+        .map(UnicodeWidthStr::width)
+        .max()
+        .unwrap_or(1)
+        .max(1)
+}
+
+fn fit_table_widths(natural: &[usize], minimums: &[usize], max_width: usize) -> Option<Vec<usize>> {
     let content_budget =
         max_width.checked_sub(natural.len().saturating_mul(3).saturating_add(1))?;
-    if content_budget < natural.len() {
+    let mut fitted = minimums.to_vec();
+    let minimum_width = fitted.iter().sum::<usize>();
+    if content_budget < minimum_width {
         return None;
     }
     if natural.iter().sum::<usize>() <= content_budget {
         return Some(natural.to_vec());
     }
 
-    let mut low = 1usize;
-    let mut high = natural.iter().copied().max().unwrap_or(1);
-    while low < high {
-        let middle = low + (high - low).div_ceil(2);
-        if natural
-            .iter()
-            .map(|width| (*width).min(middle))
-            .sum::<usize>()
-            <= content_budget
-        {
-            low = middle;
-        } else {
-            high = middle - 1;
+    let mut spare = content_budget - minimum_width;
+    while spare > 0 {
+        let mut expanded = false;
+        for (width, natural_width) in fitted.iter_mut().zip(natural) {
+            if *width < *natural_width {
+                *width += 1;
+                spare -= 1;
+                expanded = true;
+                if spare == 0 {
+                    break;
+                }
+            }
         }
-    }
-    let mut fitted = natural
-        .iter()
-        .map(|width| (*width).min(low))
-        .collect::<Vec<_>>();
-    let mut spare = content_budget.saturating_sub(fitted.iter().sum::<usize>());
-    for (width, natural_width) in fitted.iter_mut().zip(natural) {
-        if spare == 0 {
+        if !expanded {
             break;
-        }
-        if *width < *natural_width {
-            *width += 1;
-            spare -= 1;
         }
     }
     Some(fitted)
 }
 
 fn table_too_wide_line(columns: usize, max_width: usize) -> Line<'static> {
-    let message = format!("[table: {columns} columns; widen pane]");
+    table_notice_line(
+        &format!("[table: {columns} columns; widen pane]"),
+        max_width,
+    )
+}
+
+fn table_too_tall_line(max_width: Option<usize>) -> Line<'static> {
+    table_notice_line(
+        "[table: wrapped output exceeds safe limit; widen pane]",
+        max_width.unwrap_or(usize::MAX),
+    )
+}
+
+fn table_notice_line(message: &str, max_width: usize) -> Line<'static> {
     let visible = message.chars().take(max_width).collect::<String>();
     Line::styled(visible, theme::table_border())
 }
 
-fn truncate_cell(cell: &[Span<'static>], max_width: usize) -> Vec<Span<'static>> {
-    if cell_width(cell) <= max_width {
-        return cell.to_vec();
+fn wrap_cell(
+    cell: &[Span<'static>],
+    max_width: usize,
+    max_lines: usize,
+) -> Option<Vec<Vec<Span<'static>>>> {
+    debug_assert!(max_width > 0);
+    if max_lines == 0 {
+        return None;
     }
-    let content_limit = max_width.saturating_sub(1);
-    let mut used = 0usize;
-    let mut truncated = Vec::new();
-    let mut ellipsis_style = theme::table_cell();
-    'spans: for span in cell {
-        ellipsis_style = span.style;
-        let mut text = String::new();
+    if cell_width(cell) <= max_width {
+        return Some(vec![cell.to_vec()]);
+    }
+
+    let mut lines = Vec::new();
+    let mut current = Vec::<Span<'static>>::new();
+    let mut current_width = 0usize;
+    let mut last_break = None;
+
+    for span in cell {
         for grapheme in span.content.graphemes(true) {
             let width = grapheme.width();
-            if used.saturating_add(width) > content_limit {
-                if !text.is_empty() {
-                    truncated.push(Span::styled(text, span.style));
-                }
-                break 'spans;
+            if width > max_width {
+                return None;
             }
-            text.push_str(grapheme);
-            used = used.saturating_add(width);
-        }
-        if !text.is_empty() {
-            truncated.push(Span::styled(text, span.style));
+            while current_width.saturating_add(width) > max_width && !current.is_empty() {
+                let carry = if let Some((span_index, byte_index)) = last_break {
+                    split_spans_after(&mut current, span_index, byte_index)
+                } else {
+                    Vec::new()
+                };
+                if lines.len() == max_lines {
+                    return None;
+                }
+                lines.push(std::mem::take(&mut current));
+                current = carry;
+                current_width = cell_width(&current);
+                last_break = last_ascii_space(&current);
+            }
+
+            let breakable_space = grapheme == " "
+                && current
+                    .iter()
+                    .any(|span| span.content.chars().any(|character| character != ' '));
+            push_styled_text(&mut current, grapheme, span.style);
+            current_width = current_width.saturating_add(width);
+            if breakable_space {
+                let span_index = current.len() - 1;
+                last_break = Some((span_index, current[span_index].content.len()));
+            }
         }
     }
-    truncated.push(Span::styled("…", ellipsis_style));
-    debug_assert!(cell_width(&truncated) <= max_width);
-    truncated
+
+    if !current.is_empty() || lines.is_empty() {
+        if lines.len() == max_lines {
+            return None;
+        }
+        lines.push(current);
+    }
+    Some(lines)
+}
+
+fn push_styled_text(spans: &mut Vec<Span<'static>>, text: &str, style: Style) {
+    if let Some(last) = spans.last_mut()
+        && last.style == style
+    {
+        last.content.to_mut().push_str(text);
+    } else {
+        spans.push(Span::styled(text.to_owned(), style));
+    }
+}
+
+fn split_spans_after(
+    spans: &mut Vec<Span<'static>>,
+    span_index: usize,
+    byte_index: usize,
+) -> Vec<Span<'static>> {
+    let mut carry = spans.split_off(span_index + 1);
+    let style = spans[span_index].style;
+    let tail = spans[span_index].content.to_mut().split_off(byte_index);
+    if !tail.is_empty() {
+        carry.insert(0, Span::styled(tail, style));
+    }
+    carry
+}
+
+fn last_ascii_space(spans: &[Span<'static>]) -> Option<(usize, usize)> {
+    let mut seen_content = false;
+    let mut last_break = None;
+    for (index, span) in spans.iter().enumerate() {
+        for (byte_index, character) in span.content.char_indices() {
+            if character == ' ' && seen_content {
+                last_break = Some((index, byte_index + 1));
+            } else if character != ' ' {
+                seen_content = true;
+            }
+        }
+    }
+    last_break
 }
 
 fn push_table_rule(
@@ -220,33 +326,64 @@ fn push_table_rule(
     output.push(Line::styled(rule, theme::table_border()));
 }
 
-fn render_table_row(row: &TableRow, widths: &[usize], alignments: &[Alignment]) -> Line<'static> {
-    let mut rendered = vec![Span::styled("│", theme::table_border())];
+fn render_table_row(
+    row: &TableRow,
+    widths: &[usize],
+    alignments: &[Alignment],
+    max_lines: usize,
+    max_cells: usize,
+) -> Option<(Vec<Line<'static>>, usize)> {
+    let mut cells = Vec::with_capacity(widths.len());
+    let mut wrapped_segments = 0usize;
     for (column, width) in widths.iter().enumerate() {
         let cell = row.cells.get(column).map(Vec::as_slice).unwrap_or(&[]);
-        let cell = truncate_cell(cell, *width);
-        let content_width = cell_width(&cell);
-        let remaining = width.saturating_sub(content_width);
-        let alignment = alignments.get(column).copied().unwrap_or(Alignment::None);
-        let (left, right) = match alignment {
-            Alignment::Right => (remaining, 0),
-            Alignment::Center => (remaining / 2, remaining - remaining / 2),
-            Alignment::None | Alignment::Left => (0, remaining),
-        };
-        let base = if row.header {
-            theme::table_header()
-        } else {
-            theme::table_cell()
-        };
-        rendered.push(Span::styled(format!(" {}", " ".repeat(left)), base));
-        rendered.extend(cell.iter().cloned().map(|mut span| {
-            span.style = table_inline_style(base, span.style);
-            span
-        }));
-        rendered.push(Span::styled(format!("{} ", " ".repeat(right)), base));
-        rendered.push(Span::styled("│", theme::table_border()));
+        let wrapped = wrap_cell(cell, *width, max_lines)?;
+        wrapped_segments = wrapped_segments.checked_add(wrapped.len())?;
+        if wrapped_segments > max_cells {
+            return None;
+        }
+        cells.push(wrapped);
     }
-    Line::from(rendered).style(theme::body())
+    let height = cells.iter().map(Vec::len).max().unwrap_or(1);
+    let cell_slots = height.checked_mul(widths.len())?;
+    if cell_slots > max_cells {
+        return None;
+    }
+    let base = if row.header {
+        theme::table_header()
+    } else {
+        theme::table_cell()
+    };
+
+    let lines = (0..height)
+        .map(|line_index| {
+            let mut rendered = vec![Span::styled("│", theme::table_border())];
+            for (column, width) in widths.iter().enumerate() {
+                let cell = cells
+                    .get(column)
+                    .and_then(|lines| lines.get(line_index))
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]);
+                let content_width = cell_width(cell);
+                let remaining = width.saturating_sub(content_width);
+                let alignment = alignments.get(column).copied().unwrap_or(Alignment::None);
+                let (left, right) = match alignment {
+                    Alignment::Right => (remaining, 0),
+                    Alignment::Center => (remaining / 2, remaining - remaining / 2),
+                    Alignment::None | Alignment::Left => (0, remaining),
+                };
+                rendered.push(Span::styled(format!(" {}", " ".repeat(left)), base));
+                rendered.extend(cell.iter().cloned().map(|mut span| {
+                    span.style = table_inline_style(base, span.style);
+                    span
+                }));
+                rendered.push(Span::styled(format!("{} ", " ".repeat(right)), base));
+                rendered.push(Span::styled("│", theme::table_border()));
+            }
+            Line::from(rendered).style(theme::body())
+        })
+        .collect();
+    Some((lines, cell_slots))
 }
 
 fn table_inline_style(base: Style, inline: Style) -> Style {
@@ -550,25 +687,123 @@ mod tests {
     }
 
     #[test]
-    fn fits_wide_tables_without_wrapping_borders() {
+    fn wraps_wide_table_cells_without_losing_text_or_borders() {
         let rendered = render_with_width(
             "| First heading 👨‍👩‍👧‍👦 | Second heading |\n| - | - |\n| lengthy content | more lengthy content |",
             Some(24),
         );
+        let plain = rendered
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+
         assert!(rendered.iter().all(|line| line.width() <= 24));
-        assert!(
-            rendered
+        assert!(plain.iter().all(|line| !line.contains('…')));
+        for expected in [
+            "First",
+            "heading",
+            "⟦ZWJ⟧",
+            "Second",
+            "lengthy",
+            "content",
+            "more",
+        ] {
+            assert!(
+                plain.iter().any(|line| line.contains(expected)),
+                "missing {expected:?} from {plain:#?}"
+            );
+        }
+        assert!(plain.len() > 5);
+        assert!(plain.first().is_some_and(|line| line.starts_with('┌')));
+        assert!(plain.last().is_some_and(|line| line.starts_with('└')));
+    }
+
+    #[test]
+    fn wrapped_cells_preserve_long_words_wide_graphemes_and_whitespace() {
+        let original = "implementation-A界B  x\u{a0}y";
+        let cell = vec![Span::raw(original)];
+        let wrapped = wrap_cell(&cell, 5, MAX_TABLE_OUTPUT_LINES).unwrap();
+        let joined = wrapped
+            .iter()
+            .flat_map(|line| line.iter())
+            .map(|span| span.content.as_ref())
+            .collect::<String>();
+
+        assert_eq!(joined, original);
+        assert!(wrapped.iter().all(|line| cell_width(line) <= 5));
+        assert!(wrapped.len() > 1);
+    }
+
+    #[test]
+    fn wrapped_cells_preserve_inline_styles() {
+        let bold = theme::body().add_modifier(Modifier::BOLD);
+        let cell = vec![Span::raw("alpha "), Span::styled("beta gamma", bold)];
+        let wrapped = wrap_cell(&cell, 7, MAX_TABLE_OUTPUT_LINES).unwrap();
+
+        assert_eq!(
+            wrapped
                 .iter()
-                .flat_map(|line| &line.spans)
-                .any(|span| span.content.contains('…'))
-        );
-        assert!(rendered.iter().any(|line| {
-            let text = line
-                .spans
-                .iter()
+                .flat_map(|line| line.iter())
                 .map(|span| span.content.as_ref())
-                .collect::<String>();
-            text.starts_with('┌') && text.ends_with('┐')
+                .collect::<String>(),
+            "alpha beta gamma"
+        );
+        assert!(wrapped.iter().flatten().any(|span| {
+            span.content.contains("beta") && span.style.add_modifier.contains(Modifier::BOLD)
+        }));
+    }
+
+    #[test]
+    fn wrapped_cell_output_is_bounded() {
+        let cell = vec![Span::raw("x".repeat(MAX_TABLE_OUTPUT_LINES * 2 + 1))];
+        assert!(wrap_cell(&cell, 2, MAX_TABLE_OUTPUT_LINES).is_none());
+
+        let row = TableRow {
+            cells: vec![vec![Span::raw("abcdef")], vec![Span::raw("ghijkl")]],
+            header: false,
+        };
+        assert!(render_table_row(&row, &[2, 2], &[], 10, 3).is_none());
+
+        let source = format!(
+            "| A |\n| - |\n| {} |",
+            "x".repeat(MAX_TABLE_OUTPUT_LINES * 2 + 1)
+        );
+        let rendered = render_with_width(&source, Some(6));
+        assert_eq!(rendered.len(), 1);
+        assert!(rendered[0].spans[0].content.starts_with("[table"));
+    }
+
+    #[test]
+    fn word_wrapping_never_creates_a_whitespace_only_line() {
+        let cell = vec![Span::raw("hello world")];
+        let wrapped = wrap_cell(&cell, 5, MAX_TABLE_OUTPUT_LINES).unwrap();
+        assert!(wrapped.iter().all(|line| {
+            line.iter()
+                .any(|span| span.content.chars().any(|character| character != ' '))
+        }));
+        assert_eq!(
+            wrapped
+                .iter()
+                .flatten()
+                .map(|span| span.content.as_ref())
+                .collect::<String>(),
+            "hello world"
+        );
+    }
+
+    #[test]
+    fn narrow_ascii_table_uses_single_cell_columns_before_fallback() {
+        let rendered = render_with_width("| A | B |\n| - | - |\n| x | y |", Some(9));
+        assert!(rendered.iter().all(|line| line.width() <= 9));
+        assert!(rendered.iter().any(|line| {
+            line.spans
+                .iter()
+                .any(|span| span.content.as_ref().contains('x'))
         }));
     }
 

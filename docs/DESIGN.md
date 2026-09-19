@@ -67,9 +67,9 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 ### FR3 — Preview
 
 - Render common Markdown structure as prominent, semantically colored terminal cells.
-- Render GFM tables with Unicode borders, content-derived column widths, header emphasis, and source alignment markers.
+- Render GFM tables with Unicode borders, content-derived column widths, header emphasis, source alignment markers, row dividers, and lossless cell wrapping.
 - Recognize fenced `mermaid` blocks and render a deliberately bounded subset—top-down linear flows, rectangular nodes, and `-->` edges—as terminal-native boxes and arrows. Unsupported syntax falls back to visible source code.
-- Synchronize preview position proportionally to the editor viewport while accounting for wrapped preview rows.
+- Synchronize preview position proportionally to the editor viewport while accounting for wrapped preview rows, while allowing independent preview scrolling when wrapped content exceeds the source height.
 - Treat inline HTML as text, not executable markup.
 - Ensure every document-derived terminal cell contains only printable text; expose common deceptive Unicode formatting controls visibly.
 
@@ -89,7 +89,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 
 1. **Terminal injection:** parser input crosses `safety::parser_input`, which preserves newline/tab only for logical layout; every string reaching a terminal cell crosses `safety::printable`, where all C0 controls become Unicode control pictures, DEL becomes `␡`, and C1 controls become `�`.
 2. **No link activation:** links render as label text only. The MVP never dispatches URI handlers.
-3. **Resource bounds:** 1 MiB input cap; Mermaid blocks are capped at 64 KiB, 64 nodes, 64-byte identifiers, 512-character labels, and 4,096 output lines; no PDF/decompression/plugin inputs; one in-memory document; preview is cached and recomputed only after edits.
+3. **Resource bounds:** 1 MiB input cap; Mermaid blocks and expanded table previews are each capped at 4,096 output lines, table expansion is additionally capped at 65,536 rendered cell slots, and Mermaid has additional caps of 64 KiB, 64 nodes, 64-byte identifiers, and 512-character labels; no PDF/decompression/plugin inputs; one in-memory document; preview is cached and recomputed only after edits or width changes.
 4. **Filesystem integrity:** regular files only; conflict check; same-directory atomic replacement; no shell commands.
 5. **Supply chain:** committed `Cargo.lock`; minimal features; CI formatting/lint/tests/audit; immutable release assets; checksummed Cargo-free installs rather than mutable branch installation.
 6. **Privacy:** no telemetry, background network calls, history, or recovery files; only the explicit update command accesses the network.
@@ -107,8 +107,8 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 - Release CI builds and tests macOS/Linux arm64/x86-64 archives, audits dependencies, publishes immutable assets plus `SHA256SUMS`, and both the portable `/bin/sh` installer and `draftpane update` verify checksums before replacement.
 - Tests prove the embedded updater passes install paths as arguments without shell interpolation and neutralizes subprocess output controls.
 - Tests prove left-click cursor placement accounts for viewport offsets, wide characters, and sanitization expansion.
-- Tests prove mouse-wheel input only scrolls when the pointer is over the editor and that preview scroll follows editor progress.
-- Tests prove GFM tables render bordered, aligned, padded, terminal-safe cells while retaining inline emphasis.
+- Tests prove mouse-wheel input scrolls the pane under the pointer, preview scroll follows editor progress by default, and independently wrapped preview content remains reachable.
+- Tests prove GFM tables render bordered, aligned, padded, terminal-safe cells while retaining inline emphasis and wrapping long content without truncation.
 - Tests prove supported Mermaid flows render as bounded, terminal-safe boxes and arrows, and unsupported Mermaid falls back to source without semantic guessing.
 - A manual Ghostty smoke test can open, edit, mouse-scroll both panes in sync, preview, save, and visibly neutralize an OSC 52 payload.
 
