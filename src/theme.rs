@@ -5,6 +5,7 @@ use ratatui::style::{Color, Modifier, Style};
 // documentation conventions while leaving font selection to the terminal.
 const BG: Color = Color::Rgb(13, 17, 23);
 const BG_MUTED: Color = Color::Rgb(21, 27, 35);
+const BG_SELECTION: Color = Color::Rgb(31, 72, 110);
 const FG: Color = Color::Rgb(240, 246, 252);
 const MUTED: Color = Color::Rgb(145, 152, 161);
 const BLUE: Color = Color::Rgb(68, 147, 248);
@@ -20,6 +21,13 @@ pub fn preview() -> Style {
 
 pub fn editor() -> Style {
     Style::default().fg(FG).bg(BG)
+}
+
+pub fn editor_selection() -> Style {
+    Style::default()
+        .fg(FG)
+        .bg(BG_SELECTION)
+        .add_modifier(Modifier::BOLD)
 }
 
 pub fn pane_border() -> Style {

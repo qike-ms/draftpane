@@ -61,6 +61,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 
 - Insert Unicode scalar values without corrupting UTF-8.
 - Insert/split/join/delete lines and move by character rather than byte.
+- Select contiguous whole-line ranges with `Shift+Up`/`Shift+Down`; delete the current or selected lines with `Ctrl+K`, Delete, or Backspace while always retaining one editable line.
 - Reflect each edit in preview and dirty status on the next frame.
 - Keep the cursor visible through vertical and horizontal editor scrolling.
 
@@ -107,6 +108,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 - Release CI builds and tests macOS/Linux arm64/x86-64 archives, audits dependencies, publishes immutable assets plus `SHA256SUMS`, and both the portable `/bin/sh` installer and `draftpane update` verify checksums before replacement.
 - Tests prove the embedded updater passes install paths as arguments without shell interpolation and neutralizes subprocess output controls.
 - Tests prove left-click cursor placement accounts for viewport offsets, wide characters, and sanitization expansion.
+- Tests prove whole-line selection is visible, range deletion updates the buffer, current-line deletion works, and Escape clears selection without editing.
 - Tests prove mouse-wheel input scrolls the pane under the pointer, preview scroll follows editor progress by default, and independently wrapped preview content remains reachable.
 - Tests prove GFM tables render bordered, aligned, padded, terminal-safe cells while retaining inline emphasis and wrapping long content without truncation.
 - Tests prove supported Mermaid flows render as bounded, terminal-safe boxes and arrows, and unsupported Mermaid falls back to source without semantic guessing.

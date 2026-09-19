@@ -47,6 +47,24 @@ impl Editor {
         self.column = column.min(self.lines[self.row].chars().count());
     }
 
+    pub fn delete_lines(&mut self, first: usize, last: usize) -> bool {
+        let final_row = self.lines.len().saturating_sub(1);
+        let start = first.min(last).min(final_row);
+        let end = first.max(last).min(final_row);
+        if self.lines.len() == 1 && self.lines[0].is_empty() {
+            return false;
+        }
+
+        self.lines.drain(start..=end);
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+        self.row = start.min(self.lines.len() - 1);
+        self.column = 0;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
         let mut changed = false;
         match key.code {
@@ -171,6 +189,22 @@ mod tests {
         assert_eq!(editor.text(), "a\nb");
         editor.handle_key(key(KeyCode::Backspace));
         assert_eq!(editor.text(), "ab");
+    }
+
+    #[test]
+    fn deletes_a_line_range_and_keeps_one_editable_line() {
+        let mut editor = Editor::from_text("zero\none\ntwo\nthree");
+        editor.set_cursor(2, 2);
+
+        assert!(editor.delete_lines(2, 1));
+        assert_eq!(editor.text(), "zero\nthree");
+        assert_eq!(editor.cursor(), (1, 0));
+        assert_eq!(editor.revision(), 1);
+
+        assert!(editor.delete_lines(0, 1));
+        assert_eq!(editor.text(), "");
+        assert_eq!(editor.cursor(), (0, 0));
+        assert!(!editor.delete_lines(0, 0));
     }
 
     #[test]

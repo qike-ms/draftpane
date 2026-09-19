@@ -45,7 +45,7 @@ No UI code accesses the filesystem directly.
 ### `editor.rs` — text state machine
 
 - Stores text as Unicode strings split into logical lines.
-- Translates key events into deterministic state transitions.
+- Translates key events into deterministic state transitions, including bounded whole-line range deletion that always leaves one editable line.
 - Exposes cursor and complete text snapshots.
 
 It does not render terminal escapes, parse Markdown, or write files.
@@ -95,7 +95,7 @@ This is defense in depth: safe input enters the parser, then parser-provided tex
 - Owns `Document` and `Editor` instances.
 - Runs the event/draw loop.
 - Chooses responsive pane layout.
-- Routes save/quit/keyboard/mouse-scroll/click commands.
+- Routes save/quit/keyboard/mouse-scroll/click commands and owns the transient whole-line selection anchor.
 - Tracks rendered pane rectangles so mouse input targets the correct pane; editor clicks map through vertical/horizontal scroll offsets and terminal display widths.
 - Derives preview scroll proportionally from editor viewport progress and wrapped preview height, while supporting independent wheel and boundary-key scrolling for expanded preview content.
 - Builds widgets exclusively from sanitized strings and typed styles.
@@ -188,7 +188,7 @@ Modules are cohesive and acyclic. Infrastructure (`crossterm`, filesystem) remai
 
 ## Testing strategy
 
-- Unit tests: sanitizer, editor Unicode transitions, Markdown rendering/theme, bounded and style-preserving GFM table wrapping, bounded Mermaid parsing/rendering/fallback, mouse hit-testing/click coordinate mapping, wrapped-height estimation, and synchronized/independent preview scrolling.
+- Unit tests: sanitizer, editor Unicode transitions and line-range deletion, visible whole-line selection, Markdown rendering/theme, bounded and style-preserving GFM table wrapping, bounded Mermaid parsing/rendering/fallback, mouse hit-testing/click coordinate mapping, wrapped-height estimation, and synchronized/independent preview scrolling.
 - Filesystem tests: UTF-8/size checks, atomic save, external conflict.
 - App test: command routing and save integration.
 - CI: formatting, Clippy with warnings denied, locked tests/build, dependency audit.

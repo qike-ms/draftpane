@@ -21,7 +21,7 @@ That's it—Cargo and Rust are not required. The installer supports macOS and Li
 To install an immutable version:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.6.2/install.sh | sh -s -- --version v0.6.2
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.7.0/install.sh | sh -s -- --version v0.7.0
 ```
 
 To build or contribute, install Rust 1.88 or newer and use the locked source build documented in [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).
@@ -50,6 +50,10 @@ draftpane README.md
 | Mouse wheel over editor | Scroll editor and synchronized preview |
 | Mouse wheel over preview | Scroll wrapped preview content independently |
 | `Ctrl+D` / `Ctrl+U` | Scroll editor and synchronized preview; at an editor boundary, scroll the preview |
+| `Ctrl+K` | Delete the current line, or all selected lines |
+| `Shift+Up` / `Shift+Down` | Select whole lines; repeat to extend the selection |
+| Delete / Backspace | Delete selected lines; otherwise edit normally |
+| Escape | Clear the line selection |
 | Arrow keys, Home, End | Move cursor; preview follows editor position |
 | Enter, Backspace, Delete, Tab | Edit |
 
@@ -59,7 +63,7 @@ The layout is horizontal at 80 columns or wider and stacked in narrower terminal
 
 - Opens one regular, non-symlink UTF-8 Markdown file, up to 1 MiB.
 - Renders headings, emphasis, links, lists, block quotes, code, rules, task markers, GFM tables with aligned Unicode borders, row dividers, and wrapped cells, and a safe Mermaid subset with terminal-native boxes/arrows. The terminal controls the font; DraftPane can select color and text attributes only.
-- Moves the cursor on left click, scrolls the editor with the mouse wheel, and synchronizes preview progress proportionally with editor scrolling/cursor movement.
+- Moves the cursor on left click, supports visible whole-line selection and deletion, scrolls either pane with the mouse wheel, and synchronizes preview progress proportionally with editor scrolling/cursor movement.
 - Does not open links or make network requests while editing; only the explicit `draftpane update` command accesses GitHub Releases.
 - Mermaid preview currently supports only top-down linear `flowchart`/`graph` diagrams with declared rectangular nodes and `-->` edges. Unsupported Mermaid remains visible as source code rather than being rendered incorrectly.
 - Does not support mouse text selection, undo, search, clipboard integration, PDF, syntax highlighting, configuration, or automatic file reload yet.

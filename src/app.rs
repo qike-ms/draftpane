@@ -27,6 +27,7 @@ pub struct App {
     preview_max_scroll: u16,
     editor_scroll: usize,
     editor_horizontal_scroll: usize,
+    line_selection_anchor: Option<usize>,
     preview: Vec<Line<'static>>,
     preview_revision: u64,
     rendered_preview_width: u16,
@@ -50,6 +51,7 @@ impl App {
             preview_max_scroll: 0,
             editor_scroll: 0,
             editor_horizontal_scroll: 0,
+            line_selection_anchor: None,
             preview,
             preview_revision: 0,
             rendered_preview_width: 0,
@@ -101,14 +103,31 @@ impl App {
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 self.scroll_editor(SCROLL_ROWS * 2, false);
             }
+            (KeyCode::Char('k'), modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
+                self.delete_selected_or_current_lines();
+            }
+            (KeyCode::Up | KeyCode::Down, modifiers)
+                if modifiers.contains(KeyModifiers::SHIFT)
+                    && !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                self.extend_line_selection(key);
+            }
+            (KeyCode::Delete | KeyCode::Backspace, _) if self.selected_line_range().is_some() => {
+                self.delete_selected_or_current_lines();
+            }
+            (KeyCode::Esc, _) if self.line_selection_anchor.take().is_some() => {
+                self.message = "Line selection cleared".into();
+            }
             _ => {
                 let previous_cursor = self.editor.cursor();
                 if self.editor.handle_key(key) {
                     self.document.replace_text(self.editor.text());
+                    self.line_selection_anchor = None;
                     self.preview_scroll_manual = false;
                     self.quit_armed = false;
                     self.message = "Modified".into();
                 } else if self.editor.cursor() != previous_cursor {
+                    self.line_selection_anchor = None;
                     self.preview_scroll_manual = false;
                     self.quit_armed = false;
                     self.message = "Cursor moved".into();
@@ -147,9 +166,46 @@ impl App {
             .saturating_add(mouse.column.saturating_sub(inner.x) as usize);
         let column = character_index_at_display_column(&self.editor.lines()[row], display_column);
         self.editor.set_cursor(row, column);
+        self.line_selection_anchor = None;
         self.preview_scroll_manual = false;
         self.quit_armed = false;
         self.message = "Cursor moved".into();
+    }
+
+    fn selected_line_range(&self) -> Option<(usize, usize)> {
+        self.line_selection_anchor.map(|anchor| {
+            let row = self.editor.cursor().0;
+            (anchor.min(row), anchor.max(row))
+        })
+    }
+
+    fn extend_line_selection(&mut self, key: KeyEvent) {
+        let previous_row = self.editor.cursor().0;
+        let anchor = self.line_selection_anchor.unwrap_or(previous_row);
+        self.editor.handle_key(key);
+        self.line_selection_anchor = Some(anchor);
+        self.preview_scroll_manual = false;
+        self.quit_armed = false;
+        let (first, last) = self.selected_line_range().unwrap_or((anchor, anchor));
+        self.message = format!(
+            "{} line(s) selected · Delete/Backspace/Ctrl+K",
+            last - first + 1
+        );
+    }
+
+    fn delete_selected_or_current_lines(&mut self) {
+        let (first, last) = self
+            .selected_line_range()
+            .unwrap_or_else(|| (self.editor.cursor().0, self.editor.cursor().0));
+        let count = last - first + 1;
+        if !self.editor.delete_lines(first, last) {
+            return;
+        }
+        self.document.replace_text(self.editor.text());
+        self.line_selection_anchor = None;
+        self.preview_scroll_manual = false;
+        self.quit_armed = false;
+        self.message = format!("Deleted {count} line(s)");
     }
 
     fn scroll_editor(&mut self, rows: usize, down: bool) {
@@ -225,11 +281,28 @@ impl App {
             self.preview_scroll_manual = false;
         }
 
+        let selected_lines = self.selected_line_range();
         let editor_lines = self
             .editor
             .lines()
             .iter()
-            .map(|line| Line::styled(printable(line), theme::editor()))
+            .enumerate()
+            .map(|(index, line)| {
+                let selected =
+                    selected_lines.is_some_and(|(first, last)| index >= first && index <= last);
+                let mut text = printable(line);
+                if selected && text.is_empty() {
+                    text.push(' ');
+                }
+                Line::styled(
+                    text,
+                    if selected {
+                        theme::editor_selection()
+                    } else {
+                        theme::editor()
+                    },
+                )
+            })
             .collect::<Vec<_>>();
         let editor_height = panes[0].height.saturating_sub(2);
         let editor_width = panes[0].width.saturating_sub(2);
@@ -425,6 +498,63 @@ mod tests {
         app.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
         app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
         assert_eq!(std::fs::read_to_string(path).unwrap(), "ab");
+    }
+
+    #[test]
+    fn shift_arrows_select_whole_lines_and_delete_removes_the_range() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "zero\none\ntwo\nthree").unwrap();
+        let mut app = App::open(path).unwrap();
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        assert_eq!(app.selected_line_range(), Some((0, 2)));
+        assert!(app.message.starts_with("3 line(s) selected"));
+
+        let backend = TestBackend::new(100, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        assert_eq!(
+            terminal.backend().buffer().cell((1, 1)).unwrap().style().bg,
+            theme::editor_selection().bg
+        );
+
+        app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+        assert_eq!(app.editor.text(), "three");
+        assert_eq!(app.editor.cursor(), (0, 0));
+        assert_eq!(app.selected_line_range(), None);
+        assert!(app.document.is_dirty());
+    }
+
+    #[test]
+    fn ctrl_k_deletes_the_current_line() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "zero\none\ntwo").unwrap();
+        let mut app = App::open(path).unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL));
+
+        assert_eq!(app.editor.text(), "zero\ntwo");
+        assert_eq!(app.editor.cursor(), (1, 0));
+        assert_eq!(app.message, "Deleted 1 line(s)");
+    }
+
+    #[test]
+    fn escape_clears_line_selection_without_editing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "zero\none").unwrap();
+        let mut app = App::open(path).unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.selected_line_range(), None);
+        assert_eq!(app.editor.text(), "zero\none");
+        assert!(!app.document.is_dirty());
     }
 
     #[test]
