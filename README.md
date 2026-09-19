@@ -45,7 +45,7 @@ draftpane README.md
 | Key | Action |
 |---|---|
 | `Ctrl+S` | save |
-| `Ctrl+Q` | Quit; press twice to discard unsaved changes |
+| `Ctrl+Q` | Quit; with unsaved changes, press `Y` to confirm discard |
 | Left click in editor | Move cursor to the clicked character/line |
 | Mouse wheel over editor | Scroll editor and synchronized preview |
 | Mouse wheel over preview | Scroll wrapped preview content independently |

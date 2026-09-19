@@ -12,7 +12,10 @@ use std::{env, ffi::OsString, io::stdout, panic, path::PathBuf, process::ExitCod
 use anyhow::{Context, Result};
 use app::App;
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{
+        DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    },
     execute,
 };
 use safety::printable;
@@ -44,19 +47,30 @@ fn run() -> Result<()> {
 
 fn run_editor(path: PathBuf) -> Result<()> {
     let mut terminal = ratatui::init();
-    if let Err(error) = execute!(stdout(), EnableMouseCapture) {
+    if let Err(error) = execute!(
+        stdout(),
+        EnableMouseCapture,
+        PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+        )
+    ) {
+        let _ = execute!(stdout(), PopKeyboardEnhancementFlags, DisableMouseCapture);
         ratatui::restore();
-        return Err(error).context("enable mouse capture");
+        return Err(error).context("enable terminal input modes");
     }
     let previous_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
-        let _ = execute!(stdout(), DisableMouseCapture);
+        let _ = execute!(stdout(), PopKeyboardEnhancementFlags, DisableMouseCapture);
         previous_hook(info);
     }));
     let result = App::open(path).and_then(|app| app.run(&mut terminal));
-    let mouse_result = execute!(stdout(), DisableMouseCapture).context("disable mouse capture");
+    let input_result = execute!(stdout(), PopKeyboardEnhancementFlags, DisableMouseCapture)
+        .context("disable terminal input modes");
     ratatui::restore();
-    result.and(mouse_result)
+    result.and(input_result)
 }
 
 const USAGE: &str = "DraftPane — secure terminal Markdown editor\n\n\

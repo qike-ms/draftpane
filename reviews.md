@@ -157,3 +157,24 @@ Ship v0.6.0.
 ## Net recommendation
 
 Ship v0.6.2.
+
+---
+
+# Release Review — v0.7.0
+
+## Issues resolved
+
+- Whole-line selection now clears before non-selection cursor movement or scrolling can alter its range.
+- Destructive shortcuts require their documented modifiers, and repeated key events cannot confirm dirty-file discard.
+- Dirty-file quit now requires `Ctrl+Q` followed by a distinct plain `Y` press; Escape and every save attempt clear the pending confirmation.
+- Empty-buffer deletion is a safe no-op that clears selection and reports what happened.
+- Progressive keyboard event reporting is enabled and restored alongside mouse capture.
+
+## Verification
+
+- Formatting, 74 tests, Clippy with warnings denied, RustSec audit, release build, and PTY selection/delete/save and dirty-quit checks pass.
+- Final independent review found no remaining material issues.
+
+## Net recommendation
+
+Ship v0.7.0.

@@ -78,19 +78,36 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
-        if key.kind == crossterm::event::KeyEventKind::Release {
+        if key.kind == crossterm::event::KeyEventKind::Release
+            || key.kind == crossterm::event::KeyEventKind::Repeat
+                && (matches!(
+                    (key.code, key.modifiers),
+                    (KeyCode::Char('q'), KeyModifiers::CONTROL)
+                        | (KeyCode::Char('k'), KeyModifiers::CONTROL)
+                ) || self.quit_armed
+                    && matches!(
+                        (key.code, key.modifiers),
+                        (KeyCode::Char('y'), KeyModifiers::NONE)
+                    ))
+        {
             return;
         }
         match (key.code, key.modifiers) {
             (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
-                if !self.document.is_dirty() || self.quit_armed {
+                if !self.document.is_dirty() {
                     self.should_quit = true;
                 } else {
                     self.quit_armed = true;
-                    self.message = "Unsaved changes: Ctrl+S saves; Ctrl+Q again discards".into();
+                    self.message = "Unsaved changes: Ctrl+S saves; Y discards; Esc cancels".into();
                 }
             }
+            (KeyCode::Char('y'), KeyModifiers::NONE)
+                if self.quit_armed && key.kind == crossterm::event::KeyEventKind::Press =>
+            {
+                self.should_quit = true;
+            }
             (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+                self.quit_armed = false;
                 self.document.replace_text(self.editor.text());
                 self.message = match self.document.save() {
                     Ok(()) => "Saved".into(),
@@ -103,7 +120,7 @@ impl App {
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 self.scroll_editor(SCROLL_ROWS * 2, false);
             }
-            (KeyCode::Char('k'), modifiers) if modifiers.contains(KeyModifiers::CONTROL) => {
+            (KeyCode::Char('k'), KeyModifiers::CONTROL) => {
                 self.delete_selected_or_current_lines();
             }
             (KeyCode::Up | KeyCode::Down, modifiers)
@@ -115,22 +132,45 @@ impl App {
             (KeyCode::Delete | KeyCode::Backspace, _) if self.selected_line_range().is_some() => {
                 self.delete_selected_or_current_lines();
             }
-            (KeyCode::Esc, _) if self.line_selection_anchor.take().is_some() => {
-                self.message = "Line selection cleared".into();
+            (KeyCode::Esc, _) => {
+                let had_selection = self.line_selection_anchor.take().is_some();
+                let was_quit_armed = self.quit_armed;
+                self.quit_armed = false;
+                if had_selection {
+                    self.message = "Line selection cleared".into();
+                } else if was_quit_armed {
+                    self.message = "Discard canceled".into();
+                }
             }
             _ => {
                 let previous_cursor = self.editor.cursor();
+                let had_selection = self.line_selection_anchor.is_some();
+                let cursor_command = matches!(
+                    key.code,
+                    KeyCode::Left
+                        | KeyCode::Right
+                        | KeyCode::Up
+                        | KeyCode::Down
+                        | KeyCode::Home
+                        | KeyCode::End
+                );
                 if self.editor.handle_key(key) {
                     self.document.replace_text(self.editor.text());
                     self.line_selection_anchor = None;
                     self.preview_scroll_manual = false;
                     self.quit_armed = false;
                     self.message = "Modified".into();
-                } else if self.editor.cursor() != previous_cursor {
+                } else if self.editor.cursor() != previous_cursor
+                    || (cursor_command && had_selection)
+                {
                     self.line_selection_anchor = None;
                     self.preview_scroll_manual = false;
                     self.quit_armed = false;
-                    self.message = "Cursor moved".into();
+                    self.message = if self.editor.cursor() != previous_cursor {
+                        "Cursor moved".into()
+                    } else {
+                        "Line selection cleared".into()
+                    };
                 }
             }
         }
@@ -199,6 +239,9 @@ impl App {
             .unwrap_or_else(|| (self.editor.cursor().0, self.editor.cursor().0));
         let count = last - first + 1;
         if !self.editor.delete_lines(first, last) {
+            self.line_selection_anchor = None;
+            self.quit_armed = false;
+            self.message = "Nothing to delete".into();
             return;
         }
         self.document.replace_text(self.editor.text());
@@ -209,6 +252,10 @@ impl App {
     }
 
     fn scroll_editor(&mut self, rows: usize, down: bool) {
+        if self.line_selection_anchor.take().is_some() {
+            self.quit_armed = false;
+            self.message = "Line selection cleared".into();
+        }
         let viewport_height = self.editor_pane.height.saturating_sub(2) as usize;
         let max_scroll = self.editor.lines().len().saturating_sub(viewport_height);
         let previous_scroll = self.editor_scroll;
@@ -501,6 +548,68 @@ mod tests {
     }
 
     #[test]
+    fn dirty_quit_requires_a_distinct_confirmation_key() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "original").unwrap();
+        let mut app = App::open(path).unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
+        assert!(app.quit_armed);
+
+        let mut repeated = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
+        repeated.kind = crossterm::event::KeyEventKind::Repeat;
+        app.handle_key(repeated);
+
+        assert!(app.quit_armed);
+        assert!(!app.should_quit);
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
+        assert!(!app.should_quit);
+        let mut repeated_y = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE);
+        repeated_y.kind = crossterm::event::KeyEventKind::Repeat;
+        app.handle_key(repeated_y);
+        assert!(!app.should_quit);
+        assert_eq!(app.editor.text(), "xoriginal");
+        app.handle_key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn repeated_ctrl_k_does_not_delete_additional_lines() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "zero\none\ntwo").unwrap();
+        let mut app = App::open(path).unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL));
+
+        let mut repeated = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
+        repeated.kind = crossterm::event::KeyEventKind::Repeat;
+        app.handle_key(repeated);
+
+        assert_eq!(app.editor.text(), "one\ntwo");
+    }
+
+    #[test]
+    fn failed_save_clears_armed_quit_confirmation() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "original").unwrap();
+        let mut app = App::open(path.clone()).unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
+        assert!(app.quit_armed);
+        std::fs::write(&path, "external change").unwrap();
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+
+        assert!(app.message.starts_with("Save failed:"));
+        assert!(!app.quit_armed);
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
+        assert!(app.quit_armed);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
     fn shift_arrows_select_whole_lines_and_delete_removes_the_range() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.md");
@@ -543,18 +652,72 @@ mod tests {
     }
 
     #[test]
-    fn escape_clears_line_selection_without_editing() {
+    fn escape_clears_line_selection_and_cancels_armed_quit() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "zero\none").unwrap();
+        let mut app = App::open(path).unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
+        assert!(app.quit_armed);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.selected_line_range(), None);
+        assert!(app.document.is_dirty());
+        assert!(!app.quit_armed);
+        assert!(!app.should_quit);
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL));
+        assert!(app.quit_armed);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn destructive_shortcuts_require_the_documented_modifiers() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "zero\none").unwrap();
+        let mut app = App::open(path).unwrap();
+
+        app.handle_key(KeyEvent::new(
+            KeyCode::Char('k'),
+            KeyModifiers::CONTROL | KeyModifiers::ALT,
+        ));
+
+        assert_eq!(app.editor.text(), "zero\none");
+        assert!(!app.document.is_dirty());
+    }
+
+    #[test]
+    fn deleting_an_empty_selected_line_clears_the_selection() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(&path, "").unwrap();
+        let mut app = App::open(path).unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        assert_eq!(app.selected_line_range(), Some((0, 0)));
+
+        app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+
+        assert_eq!(app.selected_line_range(), None);
+        assert_eq!(app.message, "Nothing to delete");
+        assert!(!app.document.is_dirty());
+    }
+
+    #[test]
+    fn boundary_cursor_command_clears_selection() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.md");
         std::fs::write(&path, "zero\none").unwrap();
         let mut app = App::open(path).unwrap();
         app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        assert!(app.selected_line_range().is_some());
 
-        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
 
         assert_eq!(app.selected_line_range(), None);
-        assert_eq!(app.editor.text(), "zero\none");
-        assert!(!app.document.is_dirty());
+        assert_eq!(app.message, "Line selection cleared");
     }
 
     #[test]
@@ -748,6 +911,36 @@ mod tests {
         assert_eq!(app.editor_scroll, 0);
         assert_eq!(app.preview_scroll, (SCROLL_ROWS * 2) as u16);
         assert!(app.preview_scroll_manual);
+    }
+
+    #[test]
+    fn editor_scroll_clears_line_selection_before_moving_cursor() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.md");
+        std::fs::write(
+            &path,
+            (0..30)
+                .map(|index| format!("line {index}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
+        let mut app = App::open(path).unwrap();
+        let backend = TestBackend::new(100, 8);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        assert_eq!(app.selected_line_range(), Some((0, 1)));
+
+        app.handle_mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 10,
+            row: 3,
+            modifiers: KeyModifiers::NONE,
+        });
+
+        assert_eq!(app.selected_line_range(), None);
+        assert_eq!(app.editor.cursor().0, SCROLL_ROWS);
     }
 
     #[test]

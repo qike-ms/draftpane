@@ -42,7 +42,7 @@ Launch with `draftpane <path>`. Existing UTF-8 files are loaded; a missing path 
 At 80 columns or wider, editor and preview each receive half the screen. Narrow terminals stack them. A one-line status bar shows path, dirty state, and the last action/error.
 
 - `Ctrl+S`: save via same-directory temporary file and rename.
-- `Ctrl+Q`: quit immediately if clean; arm discard if dirty; a second press quits.
+- `Ctrl+Q`: quit immediately if clean; if dirty, require a distinct `Y` confirmation so key auto-repeat cannot discard work.
 - Left click in the editor: move the cursor to the clicked logical row and displayed character, accounting for scrolling and wide/sanitized characters.
 - Mouse wheel over the editor: move the editor cursor/viewport by three logical rows; preview follows proportionally.
 - `Ctrl+D` / `Ctrl+U`: move the editor cursor/viewport by six logical rows; preview follows proportionally.
@@ -84,7 +84,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 ### FR5 — Quit safely
 
 - Restore raw mode and alternate screen even when startup or the event loop returns an error.
-- Require two explicit quit commands to discard dirty content.
+- Require `Ctrl+Q` followed by a distinct `Y` confirmation to discard dirty content; repeated quit key events cannot confirm.
 
 ## Security requirements
 

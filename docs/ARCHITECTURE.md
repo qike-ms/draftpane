@@ -95,7 +95,7 @@ This is defense in depth: safe input enters the parser, then parser-provided tex
 - Owns `Document` and `Editor` instances.
 - Runs the event/draw loop.
 - Chooses responsive pane layout.
-- Routes save/quit/keyboard/mouse-scroll/click commands and owns the transient whole-line selection anchor.
+- Routes save/quit/keyboard/mouse-scroll/click commands, owns the transient whole-line selection anchor, and requires a distinct press-only confirmation key before discarding dirty content. Progressive terminal keyboard reporting distinguishes press, repeat, and release events where supported.
 - Tracks rendered pane rectangles so mouse input targets the correct pane; editor clicks map through vertical/horizontal scroll offsets and terminal display widths.
 - Derives preview scroll proportionally from editor viewport progress and wrapped preview height, while supporting independent wheel and boundary-key scrolling for expanded preview content.
 - Builds widgets exclusively from sanitized strings and typed styles.
