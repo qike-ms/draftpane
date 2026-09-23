@@ -277,10 +277,8 @@ fn parse_edges(line: &str) -> Option<Vec<Edge>> {
         rest = rest.trim_start();
         let (dotted, after_arrow) = if let Some(after) = rest.strip_prefix("-->") {
             (false, after)
-        } else if let Some(after) = rest.strip_prefix("-.->") {
-            (true, after)
         } else {
-            return None;
+            (true, rest.strip_prefix("-.->")?)
         };
         rest = after_arrow.trim_start();
 
