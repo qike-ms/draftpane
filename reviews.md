@@ -199,3 +199,24 @@ Ship v0.7.0.
 ## Net recommendation
 
 Ship v0.7.1.
+
+---
+
+# Release Review — v0.7.2
+
+## Issues resolved
+
+- Replaced the detached textual connection index with solid/dotted connector stems, arrowheads, and box ports drawn directly between source and target boxes.
+- Decomposed branches, convergences, and chains into bounded connected terminal paths while preserving every edge exactly once.
+- Made maximal path decomposition independent of Mermaid edge declaration order.
+- Kept existing linear-flow rendering and fail-closed parser/safety behavior unchanged.
+
+## Verification
+
+- Rendered the exact reported graph with pinned Mermaid 11.12.0 in local headless Chrome and inspected the resulting PDF/PNG topology before implementing the terminal projection.
+- Formatting, 76 tests, Clippy with warnings denied, RustSec audit, release build, exact-source tmux inspection, and exhaustive small-DAG/order checks pass.
+- Final independent review found no remaining material issues.
+
+## Net recommendation
+
+Ship v0.7.2.

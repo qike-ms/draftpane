@@ -61,7 +61,7 @@ It does not render terminal escapes, parse Markdown, or write files.
 
 - Recognizes only fenced Mermaid `flowchart TD`/`TB` and `graph TD`/`TB` content.
 - Accepts declared rectangular nodes, bounded non-nested subgraphs, branches, solid `-->` and dotted `-.->` directed edges, edge labels, `<br>` label breaks, and optional Mermaid YAML frontmatter.
-- Renders nodes as Ratatui boxes grouped into named sections, followed by an exact terminal-native connection index. Frontmatter layout/theme values are inert because DraftPane does not execute Mermaid or CSS.
+- Renders each directed path as Ratatui node boxes with solid or dotted connector lines and arrowheads between them, grouped into named subgraph sections plus cross-plane connections. Frontmatter layout/theme values are inert because DraftPane does not execute Mermaid or CSS.
 - Rejects cycles, undeclared nodes, nested subgraphs, directives, styling, links, callbacks, unsupported shapes, and other diagram kinds. Rejection is non-destructive: `markdown.rs` renders the original fenced source.
 - Applies the normal printable-text boundary and hard limits: 64 KiB source, 64 nodes, 128 edges, 32 subgraphs, 64-byte identifiers, 512-character labels, and 4,096 rendered lines. It never executes Mermaid JavaScript, creates SVG/HTML, or invokes an external process.
 

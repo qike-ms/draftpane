@@ -131,7 +131,7 @@ DraftPane follows explicit Markdown extensions rather than inferring semantics f
 |---|---|---|
 | CommonMark fenced code | Preserve literal code; arrows such as `↓` have no diagram semantics | Styled, line-preserving code block |
 | GFM tables, task lists, and strikethrough | Parse opt-in GFM extensions | Semantic terminal rendering; link destinations remain inert |
-| Fenced ```` ```mermaid ```` | MarkEdit recognizes the `mermaid` info string and delegates preview to Mermaid; Mermaid defines flowchart nodes and edges | Parse a safe bounded subset locally into grouped boxes and an exact connection index; show source for unsupported syntax |
+| Fenced ```` ```mermaid ```` | MarkEdit recognizes the `mermaid` info string and delegates preview to Mermaid; Mermaid defines flowchart nodes and edges | Parse a safe bounded subset locally into grouped node paths with connector lines and arrowheads; show source for unsupported syntax |
 | Mermaid rectangle node | `id["label"]` is a process/rectangle node | Unicode bordered box |
 | Mermaid top-down edge | `flowchart TD`/`TB` plus `a --> b` means a directed top-down connection | Centered `↓` between boxes |
 

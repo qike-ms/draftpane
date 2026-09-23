@@ -358,37 +358,168 @@ fn render_flowchart(graph: &Flowchart, available: usize) -> Option<Vec<Line<'sta
         .node_order
         .iter()
         .filter(|id| !graph.memberships.contains_key(*id))
+        .map(String::as_str)
         .collect::<Vec<_>>();
-    if !ungrouped.is_empty() {
+    let top_edges = graph
+        .edges
+        .iter()
+        .filter(|edge| {
+            !graph.memberships.contains_key(&edge.from) && !graph.memberships.contains_key(&edge.to)
+        })
+        .collect::<Vec<_>>();
+    if !ungrouped.is_empty()
+        && (!top_edges.is_empty() || has_isolated_nodes(&ungrouped, &graph.edges))
+    {
         push_section_title("Top level", available, &mut output);
-        for id in ungrouped {
-            render_node(graph.nodes.get(id)?, available, &mut output);
-        }
-    }
-    for group in &graph.subgraphs {
-        push_section_title(&group.title, available, &mut output);
-        for id in &group.nodes {
-            render_node(graph.nodes.get(id)?, available, &mut output);
-        }
+        render_connected_section(graph, &ungrouped, &top_edges, available, &mut output)?;
     }
 
-    push_section_title("Connections", available, &mut output);
-    for edge in &graph.edges {
-        let (line, connector) = if edge.dotted {
-            ("┄┄", "┄┄▶")
-        } else {
-            ("──", "──▶")
-        };
-        let text = if let Some(label) = &edge.label {
-            format!("[{}] {line}[{label}]{connector} [{}]", edge.from, edge.to)
-        } else {
-            format!("[{}] {connector} [{}]", edge.from, edge.to)
-        };
-        for line in wrap_display(&text, available) {
-            output.push(Line::styled(line, theme::diagram_arrow()));
-        }
+    for (group_index, group) in graph.subgraphs.iter().enumerate() {
+        let edges = graph
+            .edges
+            .iter()
+            .filter(|edge| {
+                graph.memberships.get(&edge.from) == Some(&group_index)
+                    && graph.memberships.get(&edge.to) == Some(&group_index)
+            })
+            .collect::<Vec<_>>();
+        push_section_title(&group.title, available, &mut output);
+        let nodes = group.nodes.iter().map(String::as_str).collect::<Vec<_>>();
+        render_connected_section(graph, &nodes, &edges, available, &mut output)?;
+    }
+
+    let cross_edges = graph
+        .edges
+        .iter()
+        .filter(|edge| graph.memberships.get(&edge.from) != graph.memberships.get(&edge.to))
+        .collect::<Vec<_>>();
+    if !cross_edges.is_empty() {
+        push_section_title("Cross-plane connections", available, &mut output);
+        render_edge_paths(graph, &cross_edges, available, &mut output)?;
     }
     (output.len() <= MAX_OUTPUT_LINES).then_some(output)
+}
+
+fn has_isolated_nodes(nodes: &[&str], edges: &[Edge]) -> bool {
+    nodes
+        .iter()
+        .any(|id| !edges.iter().any(|edge| edge.from == *id || edge.to == *id))
+}
+
+fn render_connected_section(
+    graph: &Flowchart,
+    nodes: &[&str],
+    edges: &[&Edge],
+    available: usize,
+    output: &mut Vec<Line<'static>>,
+) -> Option<()> {
+    if !edges.is_empty() {
+        render_edge_paths(graph, edges, available, output)?;
+    }
+    for id in nodes.iter().filter(|id| {
+        !edges
+            .iter()
+            .any(|edge| edge.from == **id || edge.to == **id)
+    }) {
+        render_node(graph.nodes.get(*id)?, available, output);
+    }
+    Some(())
+}
+
+fn render_edge_paths(
+    graph: &Flowchart,
+    edges: &[&Edge],
+    available: usize,
+    output: &mut Vec<Line<'static>>,
+) -> Option<()> {
+    let mut visited = HashSet::new();
+    let mut starts = edges
+        .iter()
+        .enumerate()
+        .filter_map(|(index, edge)| {
+            let incoming = edges.iter().filter(|other| other.to == edge.from).count();
+            let outgoing = edges.iter().filter(|other| other.from == edge.from).count();
+            (incoming != 1 || outgoing != 1).then_some(index)
+        })
+        .collect::<Vec<_>>();
+    starts.extend(0..edges.len());
+    for start in starts {
+        if visited.contains(&start) {
+            continue;
+        }
+        let mut path = vec![start];
+        visited.insert(start);
+        loop {
+            let current = edges[*path.last()?].to.as_str();
+            let incoming = edges.iter().filter(|edge| edge.to == current).count();
+            let outgoing = edges
+                .iter()
+                .enumerate()
+                .filter(|(_, edge)| edge.from == current)
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            if incoming != 1 || outgoing.len() != 1 || visited.contains(&outgoing[0]) {
+                break;
+            }
+            visited.insert(outgoing[0]);
+            path.push(outgoing[0]);
+        }
+
+        let first = edges[path[0]];
+        render_node_with_ports(
+            graph.nodes.get(&first.from)?,
+            available,
+            false,
+            true,
+            output,
+        );
+        let path_len = path.len();
+        for (position, edge_index) in path.into_iter().enumerate() {
+            let edge = edges[edge_index];
+            render_connector(edge, available, output);
+            render_node_with_ports(
+                graph.nodes.get(&edge.to)?,
+                available,
+                true,
+                position + 1 < path_len,
+                output,
+            );
+        }
+        output.push(Line::raw(""));
+        if output.len() > MAX_OUTPUT_LINES {
+            return None;
+        }
+    }
+    if output.last().is_some_and(|line| line.width() == 0) {
+        output.pop();
+    }
+    Some(())
+}
+
+fn render_connector(edge: &Edge, available: usize, output: &mut Vec<Line<'static>>) {
+    let center = available.saturating_sub(1) / 2;
+    let stem = if edge.dotted { "┆" } else { "│" };
+    let arrow = if edge.dotted { "▽" } else { "▼" };
+    if let Some(label) = &edge.label {
+        let label_width = available.saturating_sub(center.saturating_add(3)).max(1);
+        for part in wrap_display(label, label_width) {
+            output.push(Line::from(vec![
+                Span::raw(" ".repeat(center)),
+                Span::styled(stem, theme::diagram_arrow()),
+                Span::raw(" "),
+                Span::styled(part, theme::diagram_body()),
+            ]));
+        }
+    } else {
+        output.push(Line::from(vec![
+            Span::raw(" ".repeat(center)),
+            Span::styled(stem, theme::diagram_arrow()),
+        ]));
+    }
+    output.push(Line::from(vec![
+        Span::raw(" ".repeat(center)),
+        Span::styled(arrow, theme::diagram_arrow()),
+    ]));
 }
 
 fn push_section_title(title: &str, available: usize, output: &mut Vec<Line<'static>>) {
@@ -467,6 +598,16 @@ fn valid_id(id: &str) -> bool {
 }
 
 fn render_node(node: &Node, available: usize, output: &mut Vec<Line<'static>>) {
+    render_node_with_ports(node, available, false, false, output);
+}
+
+fn render_node_with_ports(
+    node: &Node,
+    available: usize,
+    incoming: bool,
+    outgoing: bool,
+    output: &mut Vec<Line<'static>>,
+) {
     let content_width = available.saturating_sub(4).max(1);
     let wrapped = node
         .label_lines
@@ -482,11 +623,16 @@ fn render_node(node: &Node, available: usize, output: &mut Vec<Line<'static>>) {
     let box_width = box_content_width.saturating_add(4).min(available);
     let left = available.saturating_sub(box_width) / 2;
     let margin = " ".repeat(left);
-    let horizontal = "─".repeat(box_width.saturating_sub(2));
+    let center = available.saturating_sub(1) / 2;
+    let port = center
+        .saturating_sub(left)
+        .clamp(1, box_width.saturating_sub(2));
+    let top = node_border(box_width, incoming.then_some('┬'), port, '┌', '┐');
+    let bottom = node_border(box_width, outgoing.then_some('┴'), port, '└', '┘');
 
     output.push(Line::from(vec![
         Span::raw(margin.clone()),
-        Span::styled(format!("┌{horizontal}┐"), theme::diagram_border()),
+        Span::styled(top, theme::diagram_border()),
     ]));
     for (index, text) in wrapped.iter().enumerate() {
         let padding = box_width.saturating_sub(4).saturating_sub(text.width());
@@ -509,8 +655,24 @@ fn render_node(node: &Node, available: usize, output: &mut Vec<Line<'static>>) {
     }
     output.push(Line::from(vec![
         Span::raw(margin),
-        Span::styled(format!("└{horizontal}┘"), theme::diagram_border()),
+        Span::styled(bottom, theme::diagram_border()),
     ]));
+}
+
+fn node_border(
+    width: usize,
+    port: Option<char>,
+    port_index: usize,
+    left: char,
+    right: char,
+) -> String {
+    let mut border = vec!['─'; width];
+    border[0] = left;
+    border[width - 1] = right;
+    if let Some(port) = port {
+        border[port_index] = port;
+    }
+    border.into_iter().collect()
 }
 
 fn wrap_display(text: &str, width: usize) -> Vec<String> {
@@ -581,6 +743,27 @@ mod tests {
     }
 
     #[test]
+    fn renders_maximal_paths_independent_of_edge_declaration_order() {
+        let source = r#"flowchart TD
+            a["A"]
+            b["B"]
+            c["C"]
+            b --> c
+            a --> b"#;
+        let rendered = render_mermaid(source, Some(30)).unwrap();
+        let joined = plain(&rendered).join("\n");
+        let a = joined.find("│ A │").unwrap();
+        let b = joined.find("│ B │").unwrap();
+        let c = joined.find("│ C │").unwrap();
+
+        assert!(a < b && b < c);
+        assert_eq!(joined.matches("│ A │").count(), 1);
+        assert_eq!(joined.matches("│ B │").count(), 1);
+        assert_eq!(joined.matches("│ C │").count(), 1);
+        assert_eq!(joined.matches('▼').count(), 2);
+    }
+
+    #[test]
     fn renders_frontmatter_subgraphs_branches_and_labeled_edges() {
         let source = r#"---
 config:
@@ -644,16 +827,35 @@ flowchart TB
             "KServe LLMInferenceService",
             "Gateway / inference router",
             "NVIDIA GPU Operator",
-            "[FOUNDRY]",
+            "Cross-plane connections",
+            "Foundry",
             "deploys model CR",
-            "[KSERVE]",
-            "[ROUTE]",
-            "[GATEWAY]",
+            "Routing",
+            "Gateway / inference router",
         ] {
             assert!(joined.contains(expected), "missing {expected:?}");
         }
-        assert_eq!(joined.matches('▶').count(), 14);
-        assert!(joined.contains('┄'));
+        assert_eq!(
+            joined.matches('▼').count() + joined.matches('▽').count(),
+            14
+        );
+        assert!(joined.contains('┆'));
+        assert!(joined.contains('┴') && joined.contains('┬'));
+        assert!(!joined.contains("[FOUNDRY]"));
+        let control = joined.find("◆ Control plane").unwrap();
+        let kserve = joined[control..]
+            .find("KServe LLMInferenceService")
+            .unwrap()
+            + control;
+        let arrow = joined[kserve..].find('▼').unwrap() + kserve;
+        let routing = joined[arrow..].find("Routing").unwrap() + arrow;
+        assert!(kserve < arrow && arrow < routing);
+        let cross = joined.find("◆ Cross-plane connections").unwrap();
+        let foundry = joined[cross..].find("Foundry").unwrap() + cross;
+        let label = joined[foundry..].find("deploys model CR").unwrap() + foundry;
+        let arrow = joined[label..].find('▼').unwrap() + label;
+        let kserve = joined[arrow..].find("KServe LLMInferenceService").unwrap() + arrow;
+        assert!(foundry < label && label < arrow && arrow < kserve);
         assert!(text.iter().all(|line| line.width() <= 58));
     }
 
