@@ -21,7 +21,7 @@ That's it—Cargo and Rust are not required. The installer supports macOS and Li
 To install an immutable version:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.7.0/install.sh | sh -s -- --version v0.7.0
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/qike-ms/draftpane/releases/download/v0.7.1/install.sh | sh -s -- --version v0.7.1
 ```
 
 To build or contribute, install Rust 1.88 or newer and use the locked source build documented in [SAMPLE_COMMANDS.md](SAMPLE_COMMANDS.md).
@@ -65,7 +65,7 @@ The layout is horizontal at 80 columns or wider and stacked in narrower terminal
 - Renders headings, emphasis, links, lists, block quotes, code, rules, task markers, GFM tables with aligned Unicode borders, row dividers, and wrapped cells, and a safe Mermaid subset with terminal-native boxes/arrows. The terminal controls the font; DraftPane can select color and text attributes only.
 - Moves the cursor on left click, supports visible whole-line selection and deletion, scrolls either pane with the mouse wheel, and synchronizes preview progress proportionally with editor scrolling/cursor movement.
 - Does not open links or make network requests while editing; only the explicit `draftpane update` command accesses GitHub Releases.
-- Mermaid preview currently supports only top-down linear `flowchart`/`graph` diagrams with declared rectangular nodes and `-->` edges. Unsupported Mermaid remains visible as source code rather than being rendered incorrectly.
+- Mermaid preview supports bounded top-down `flowchart`/`graph` diagrams with declared rectangular nodes, branches, non-nested subgraphs, `-->`/`-.->` edges, edge labels, `<br/>` label breaks, and optional Mermaid YAML frontmatter. Browser-only layout/theme settings are ignored. Unsupported Mermaid remains visible as source code rather than being rendered incorrectly.
 - Does not support mouse text selection, undo, search, clipboard integration, PDF, syntax highlighting, configuration, or automatic file reload yet.
 - Saves compare the current file with the opened/saved baseline and refuse known conflicts. A concurrent writer can still race the final replacement; keep backups.
 - Atomic replacement preserves existing permission bits and CRLF style, but extended attributes and ownership behavior remain platform-dependent.

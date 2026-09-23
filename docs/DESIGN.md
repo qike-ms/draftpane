@@ -69,7 +69,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 
 - Render common Markdown structure as prominent, semantically colored terminal cells.
 - Render GFM tables with Unicode borders, content-derived column widths, header emphasis, source alignment markers, row dividers, and lossless cell wrapping.
-- Recognize fenced `mermaid` blocks and render a deliberately bounded subset—top-down linear flows, rectangular nodes, and `-->` edges—as terminal-native boxes and arrows. Unsupported syntax falls back to visible source code.
+- Recognize fenced `mermaid` blocks and render a deliberately bounded subset—top-down flows, rectangular nodes, branches, non-nested subgraphs, solid/dotted directed edges, and edge labels—as terminal-native boxes and connections. Unsupported syntax falls back to visible source code.
 - Synchronize preview position proportionally to the editor viewport while accounting for wrapped preview rows, while allowing independent preview scrolling when wrapped content exceeds the source height.
 - Treat inline HTML as text, not executable markup.
 - Ensure every document-derived terminal cell contains only printable text; expose common deceptive Unicode formatting controls visibly.
@@ -90,7 +90,7 @@ The preview uses a high-contrast dark documentation palette: bright semantic hea
 
 1. **Terminal injection:** parser input crosses `safety::parser_input`, which preserves newline/tab only for logical layout; every string reaching a terminal cell crosses `safety::printable`, where all C0 controls become Unicode control pictures, DEL becomes `␡`, and C1 controls become `�`.
 2. **No link activation:** links render as label text only. The MVP never dispatches URI handlers.
-3. **Resource bounds:** 1 MiB input cap; Mermaid blocks and expanded table previews are each capped at 4,096 output lines, table expansion is additionally capped at 65,536 rendered cell slots, and Mermaid has additional caps of 64 KiB, 64 nodes, 64-byte identifiers, and 512-character labels; no PDF/decompression/plugin inputs; one in-memory document; preview is cached and recomputed only after edits or width changes.
+3. **Resource bounds:** 1 MiB input cap; Mermaid blocks and expanded table previews are each capped at 4,096 output lines, table expansion is additionally capped at 65,536 rendered cell slots, and Mermaid has additional caps of 64 KiB, 64 nodes, 128 edges, 32 subgraphs, 64-byte identifiers, and 512-character labels; no PDF/decompression/plugin inputs; one in-memory document; preview is cached and recomputed only after edits or width changes.
 4. **Filesystem integrity:** regular files only; conflict check; same-directory atomic replacement; no shell commands.
 5. **Supply chain:** committed `Cargo.lock`; minimal features; CI formatting/lint/tests/audit; immutable release assets; checksummed Cargo-free installs rather than mutable branch installation.
 6. **Privacy:** no telemetry, background network calls, history, or recovery files; only the explicit update command accesses the network.
@@ -131,7 +131,7 @@ DraftPane follows explicit Markdown extensions rather than inferring semantics f
 |---|---|---|
 | CommonMark fenced code | Preserve literal code; arrows such as `↓` have no diagram semantics | Styled, line-preserving code block |
 | GFM tables, task lists, and strikethrough | Parse opt-in GFM extensions | Semantic terminal rendering; link destinations remain inert |
-| Fenced ```` ```mermaid ```` | MarkEdit recognizes the `mermaid` info string and delegates preview to Mermaid; Mermaid defines flowchart nodes and edges | Parse a safe linear subset locally into boxes/arrows; show source for unsupported syntax |
+| Fenced ```` ```mermaid ```` | MarkEdit recognizes the `mermaid` info string and delegates preview to Mermaid; Mermaid defines flowchart nodes and edges | Parse a safe bounded subset locally into grouped boxes and an exact connection index; show source for unsupported syntax |
 | Mermaid rectangle node | `id["label"]` is a process/rectangle node | Unicode bordered box |
 | Mermaid top-down edge | `flowchart TD`/`TB` plus `a --> b` means a directed top-down connection | Centered `↓` between boxes |
 
@@ -172,6 +172,6 @@ Rejected because HTML sanitization, local servers, browser invocation, and CSP a
 3. **Presentation 0.3:** prominent terminal theme, mouse-wheel editor scrolling, and synchronized preview.
 4. **Interaction 0.4:** click-to-position cursor and bordered GFM tables.
 5. **Distribution 0.5:** explicit `draftpane update` with embedded, checksummed installer logic.
-6. **Diagrams 0.6:** safe, bounded terminal rendering for linear top-down Mermaid flowcharts.
+6. **Diagrams 0.6–0.7:** safe, bounded terminal rendering for top-down Mermaid flowcharts, including branches, labeled/dotted edges, non-nested subgraphs, and inert YAML frontmatter.
 7. **Editing workflow:** undo/redo, selection, search, grapheme-aware movement, file watching, and explicit reload/merge prompt.
 8. **Release hardening:** fuzzing, signed binaries/checksums, provenance attestations, documented compatibility matrix.

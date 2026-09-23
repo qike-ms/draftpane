@@ -60,10 +60,10 @@ It does not render terminal escapes, parse Markdown, or write files.
 ### `diagram.rs` — bounded diagram renderer
 
 - Recognizes only fenced Mermaid `flowchart TD`/`TB` and `graph TD`/`TB` content.
-- Accepts one linear `-->` chain over declared rectangular nodes; labels may use `<br>` line breaks.
-- Renders nodes and arrows directly as Ratatui `Line`/`Span` values within the preview width.
-- Rejects branching, cycles, undeclared nodes, directives, styling, links, callbacks, subgraphs, and other diagram kinds. Rejection is non-destructive: `markdown.rs` renders the original fenced source.
-- Applies the normal printable-text boundary and hard limits: 64 KiB source, 64 nodes, 64-byte identifiers, 512-character labels, and 4,096 rendered lines. It never executes Mermaid JavaScript, creates SVG/HTML, or invokes an external process.
+- Accepts declared rectangular nodes, bounded non-nested subgraphs, branches, solid `-->` and dotted `-.->` directed edges, edge labels, `<br>` label breaks, and optional Mermaid YAML frontmatter.
+- Renders nodes as Ratatui boxes grouped into named sections, followed by an exact terminal-native connection index. Frontmatter layout/theme values are inert because DraftPane does not execute Mermaid or CSS.
+- Rejects cycles, undeclared nodes, nested subgraphs, directives, styling, links, callbacks, unsupported shapes, and other diagram kinds. Rejection is non-destructive: `markdown.rs` renders the original fenced source.
+- Applies the normal printable-text boundary and hard limits: 64 KiB source, 64 nodes, 128 edges, 32 subgraphs, 64-byte identifiers, 512-character labels, and 4,096 rendered lines. It never executes Mermaid JavaScript, creates SVG/HTML, or invokes an external process.
 
 ### `theme.rs` — terminal theme
 

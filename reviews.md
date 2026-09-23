@@ -178,3 +178,24 @@ Ship v0.6.2.
 ## Net recommendation
 
 Ship v0.7.0.
+
+---
+
+# Release Review — v0.7.1
+
+## Issues resolved
+
+- Mermaid YAML frontmatter is recognized but remains inert; browser layout, theme, and CSS settings are never executed.
+- Top-down flowcharts now support bounded branches, non-nested subgraphs, solid and dotted directed edges, chained edges, and quoted edge labels.
+- Complex graphs render grouped terminal-native node boxes plus an exact connection index, while existing linear flows retain centered boxes and down arrows.
+- Cycles, nested subgraphs, undeclared nodes, duplicate edges, directives, callbacks, unsupported shapes, and malformed labels continue to fail closed to visible source.
+
+## Verification
+
+- Three independent model families returned `APPROVE` on the final behavior.
+- Formatting, 75 tests, Clippy with warnings denied, RustSec audit, release build, and exact-source terminal inspection pass.
+- The reported convergence graph rendered all 14 nodes, four subgraphs, 14 directed connections, five edge labels, and dotted connectors.
+
+## Net recommendation
+
+Ship v0.7.1.
